@@ -94,6 +94,11 @@ trực tiếp bằng CLI sau khi đã cài/khởi động thiết bị:
 pnpm exec cap run android
 ```
 
+Trong **Vùng tập trung**, bật quyền **Usage access** và thông báo cho Focust.
+Khi bắt đầu phiên, Focust dùng foreground service có thông báo thường trực để
+nhận biết ứng dụng thuộc nhóm Đỏ/Vàng và nhắc; dịch vụ tự dừng khi hết thời gian
+hoặc khi tạm dừng phiên. Tính năng chỉ nhắc, không chặn ứng dụng.
+
 Plugin `InstalledAppsPlugin` dùng `PackageManager` để đọc các ứng dụng có
 launcher mà Android cho phép hiển thị. Cấu hình `<queries>` nằm trong
 `android/app/src/main/AndroidManifest.xml`.
@@ -110,3 +115,9 @@ iOS không cung cấp API liệt kê toàn bộ ứng dụng đã cài. Plugin c
 `canOpenURL` để kiểm tra danh mục URL scheme được khai báo trong
 `ios/App/App/Info.plist`. Muốn hỗ trợ thêm ứng dụng, thêm cả scheme và tên hiển
 thị vào hai vị trí đó trước khi gửi App Store.
+
+Để tự nhắc khi mở app Đỏ/Vàng, trong ứng dụng **Phím tắt** tạo automation riêng
+cho từng app: **Tự động hóa → Ứng dụng → Được mở → Chạy ngay → Hiển thị thông
+báo**. iOS không cho Focust biết automation nào đã cấu hình hoặc phiên tập trung
+có đang chạy không; Shortcut tự hiện thông báo mỗi khi app đó được mở và không
+chặn app.

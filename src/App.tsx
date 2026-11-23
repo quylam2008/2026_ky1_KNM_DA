@@ -10,7 +10,14 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
-import { detectInstalledApps } from './installed-apps'
+import {
+  detectInstalledApps,
+  getAppMonitoringPermissions,
+  openAppNotificationSettings,
+  openUsageAccessSettings,
+  startFocusAppMonitoring,
+  stopFocusAppMonitoring,
+} from './installed-apps'
 import {
   createStudyTask,
   claimDailyReward,
@@ -553,12 +560,14 @@ function Header({ title, subtitle }: { title?: string; subtitle?: string }) {
 }
 
 function TimerCard({
+  apps,
   tasks,
   ownedPlantIds,
   onSessionComplete,
   onTaskCreated,
   onTaskUpdated,
 }: {
+  apps: FocusApp[]
   tasks: StudyTask[]
   ownedPlantIds: string[]
   onSessionComplete: (minutes: number, taskId: string, plantId: string | null) => void
@@ -579,6 +588,7 @@ function TimerCard({
   const [editingTaskId, setEditingTaskId] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [monitorMessage, setMonitorMessage] = useState('')
   const ownedPlants = plantCatalog.filter((plant) => ownedPlantIds.includes(plant.id))
   useEffect(() => {
     if (taskId && tasks.some((task) => task.id === taskId)) return
@@ -600,9 +610,36 @@ function TimerCard({
   useEffect(() => {
     if (running && remaining === 0) {
       setRunning(false)
+      void stopFocusAppMonitoring().catch((error) =>
+        setMonitorMessage(error instanceof Error ? error.message : 'Không thể dừng theo dõi app.'),
+      )
       onSessionComplete(minutes, taskId, plantId || null)
     }
   }, [minutes, onSessionComplete, plantId, remaining, running, taskId])
+  const toggleTimer = async () => {
+    setShowAdd(false)
+    if (running) {
+      setRunning(false)
+      setMonitorMessage('')
+      try {
+        await stopFocusAppMonitoring()
+      } catch (error) {
+        setMonitorMessage(error instanceof Error ? error.message : 'Không thể dừng theo dõi app.')
+      }
+      return
+    }
+
+    const durationSeconds = remaining === 0 ? minutes * 60 : remaining
+    if (remaining === 0) setRemaining(durationSeconds)
+    setMonitorMessage('')
+    setRunning(true)
+    try {
+      const result = await startFocusAppMonitoring(apps, durationSeconds)
+      setMonitorMessage(result.message ?? '')
+    } catch (error) {
+      setMonitorMessage(error instanceof Error ? error.message : 'Không thể bật theo dõi app.')
+    }
+  }
   const display =
     remaining >= 3600
       ? `${String(Math.floor(remaining / 3600)).padStart(2, '0')}:${String(Math.floor((remaining % 3600) / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`
@@ -805,16 +842,17 @@ function TimerCard({
         </button>
         <button
           disabled={!running && !taskId}
-          onClick={() => {
-            setShowAdd(false)
-            if (!running && remaining === 0) setRemaining(minutes * 60)
-            setRunning(!running)
-          }}
+          onClick={() => void toggleTimer()}
           className="bg-[#d7b565] px-4 text-[11px] font-bold text-[#173e2f] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {running ? 'Tạm dừng' : remaining === 0 ? 'Phiên mới' : 'Bắt đầu'}
         </button>
       </div>
+      {monitorMessage && (
+        <p role="status" className="mt-2 rounded-xl bg-white/10 px-3 py-2 text-[10px] leading-4 text-white/80">
+          {monitorMessage}
+        </p>
+      )}
       {showAdd && !running && (
         <div className="mt-3 rounded-2xl bg-white/10 p-2">
           <p className="mb-2 px-1 text-[10px] font-bold text-white/75">
@@ -899,8 +937,12 @@ function AppGroups({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [scanNote, setScanNote] = useState('')
+  const [monitorPermissions, setMonitorPermissions] = useState<
+    Awaited<ReturnType<typeof getAppMonitoringPermissions>> | null
+  >(null)
+  const [monitorError, setMonitorError] = useState('')
   const groups = [
-    { key: 'red', label: 'Đỏ', note: 'Chặn hoàn toàn', color: '#cf6757', bg: '#fff0ed' },
+    { key: 'red', label: 'Đỏ', note: 'Cảnh báo khi mở', color: '#cf6757', bg: '#fff0ed' },
     { key: 'yellow', label: 'Vàng', note: 'Nhắc nhở', color: '#c89637', bg: '#fff7e6' },
     { key: 'green', label: 'Xanh', note: 'Được phép', color: '#4d8a69', bg: '#edf6ef' },
   ]
@@ -915,6 +957,19 @@ function AppGroups({
     }
     onChange(result.data)
   }
+  const refreshMonitorPermissions = async () => {
+    try {
+      setMonitorPermissions(await getAppMonitoringPermissions())
+      setMonitorError('')
+    } catch (cause) {
+      setMonitorError(
+        cause instanceof Error ? cause.message : 'Chưa thể kiểm tra quyền theo dõi ứng dụng.',
+      )
+    }
+  }
+  useEffect(() => {
+    void refreshMonitorPermissions()
+  }, [])
   const scanApps = async () => {
     setSaving(true)
     setError('')
@@ -957,6 +1012,71 @@ function AppGroups({
         <p className="mt-2 rounded-xl bg-[#edf3e9] px-3 py-2 text-[10px] leading-4 text-[#557163]">
           {scanNote}
         </p>
+      )}
+      {monitorError && !monitorPermissions && (
+        <p role="alert" className="mt-2 rounded-xl bg-[#fff0ed] px-3 py-2 text-[10px] text-[#b3574a]">
+          {monitorError}
+        </p>
+      )}
+      {monitorPermissions?.platform === 'android' && (
+        <div className="mt-3 rounded-2xl border border-[#dfe7df] bg-white p-3">
+          <p className="text-[11px] font-bold text-[#315140]">Nhắc app trong phiên tập trung</p>
+          <p className="mt-1 text-[10px] leading-4 text-[#718078]">
+            Khi bấm Bắt đầu, Android theo dõi app Đỏ/Vàng trong thời lượng phiên và hiện thông báo.
+            Dịch vụ chỉ chạy trong phiên đó.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[9px]">
+            <span className="rounded-full bg-[#f0f4ef] px-2 py-1 text-[#557163]">
+              Usage access: {monitorPermissions.usageAccess ? 'đã bật' : 'chưa bật'}
+            </span>
+            <span className="rounded-full bg-[#f0f4ef] px-2 py-1 text-[#557163]">
+              Thông báo: {monitorPermissions.notificationsEnabled ? 'đã bật' : 'chưa bật'}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {!monitorPermissions.usageAccess && (
+              <button
+                onClick={() => void openUsageAccessSettings().catch((cause) =>
+                  setMonitorError(cause instanceof Error ? cause.message : 'Không mở được cài đặt Usage access.'),
+                )}
+                className="rounded-lg bg-[#edf3e9] px-2.5 py-2 text-[10px] font-bold text-[#315140]"
+              >
+                Cấp quyền Usage access
+              </button>
+            )}
+            {!monitorPermissions.notificationsEnabled && (
+              <button
+                onClick={() => void openAppNotificationSettings().catch((cause) =>
+                  setMonitorError(cause instanceof Error ? cause.message : 'Không mở được cài đặt thông báo.'),
+                )}
+                className="rounded-lg bg-[#edf3e9] px-2.5 py-2 text-[10px] font-bold text-[#315140]"
+              >
+                Bật thông báo
+              </button>
+            )}
+            <button
+              onClick={() => void refreshMonitorPermissions()}
+              className="rounded-lg px-2.5 py-2 text-[10px] font-bold text-[#557163]"
+            >
+              Kiểm tra lại
+            </button>
+          </div>
+          {monitorError && <p role="alert" className="mt-2 text-[10px] text-[#b3574a]">{monitorError}</p>}
+        </div>
+      )}
+      {monitorPermissions?.platform === 'ios' && (
+        <div className="mt-3 rounded-2xl border border-[#dfe7df] bg-white p-3">
+          <p className="text-[11px] font-bold text-[#315140]">Thiết lập nhắc app bằng Phím tắt</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-4 text-[10px] leading-4 text-[#718078]">
+            <li>Mở Phím tắt → Tự động hóa → Tự động hóa mới → Ứng dụng.</li>
+            <li>Chọn từng app Đỏ/Vàng, chọn “Được mở” và “Chạy ngay”.</li>
+            <li>Thêm tác vụ “Hiển thị thông báo” với lời nhắc quay lại Focust.</li>
+          </ol>
+          <p className="mt-2 text-[9px] leading-4 text-[#8a6a2c]">
+            Mỗi app cần một automation. iOS không cho Focust kiểm tra app foreground hoặc biết timer
+            đang chạy; Shortcut sẽ tự nhắc mỗi lần app được mở.
+          </p>
+        </div>
       )}
       {managing && (
         <div className="mt-3 rounded-[20px] border border-[#dfe7df] bg-white p-3">
@@ -1222,6 +1342,7 @@ function Home({
         </h1>
       </div>
       <TimerCard
+        apps={apps}
         tasks={tasks}
         ownedPlantIds={ownedPlantIds}
         onSessionComplete={onSessionComplete}
