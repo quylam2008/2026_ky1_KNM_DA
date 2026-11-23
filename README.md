@@ -18,6 +18,24 @@ của Edge Function trong Supabase Dashboard.
 Trình duyệt không được phép đọc danh sách ứng dụng đã cài. Nút **Quét máy** chỉ
 hoạt động trong bản Capacitor.
 
+## Host bản web trên GitHub Pages
+
+Workflow `.github/workflows/deploy-pages.yml` tự build và deploy khi có commit
+mới lên `main`. Trong GitHub, mở **Settings → Pages** và đặt **Build and
+deployment → Source** thành **GitHub Actions**.
+
+Vì ứng dụng web cần kết nối Supabase, hãy thêm hai repository variables tại
+**Settings → Secrets and variables → Actions → Variables**:
+
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase Project URL.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: publishable key (hoặc anon key) của
+  ứng dụng; đây là khóa client công khai, không phải service-role key.
+
+Không thêm `SUPABASE_SERVICE_ROLE_KEY` vào bản web hoặc GitHub Pages. Sau khi
+workflow chạy thành công, trang sẽ có địa chỉ
+`https://quylam2008.github.io/2026_ky1_KNM_DA/`. GitHub Pages chỉ host bản web;
+nó không cài app native lên thiết bị.
+
 ## Cửa hàng và phần thưởng
 
 Trước khi cập nhật Edge Function, chạy các migration trong
@@ -51,7 +69,10 @@ kết nối của thiết bị.
 
 ## Build và đồng bộ native
 
+Tạo `.env` từ `.env.example`, cài dependencies, rồi build web assets cho app:
+
 ```bash
+pnpm install
 pnpm build
 pnpm exec cap sync
 ```
@@ -65,11 +86,25 @@ pnpm exec cap open ios
 
 ### Android
 
+Cài Android Studio và Android SDK, mở dự án bằng `pnpm exec cap open android`,
+rồi chạy trên emulator hoặc điện thoại Android đã bật USB debugging. Có thể chạy
+trực tiếp bằng CLI sau khi đã cài/khởi động thiết bị:
+
+```bash
+pnpm exec cap run android
+```
+
 Plugin `InstalledAppsPlugin` dùng `PackageManager` để đọc các ứng dụng có
 launcher mà Android cho phép hiển thị. Cấu hình `<queries>` nằm trong
 `android/app/src/main/AndroidManifest.xml`.
 
 ### iOS
+
+iOS cần máy macOS có cài Xcode. Mở dự án bằng `pnpm exec cap open ios`, chọn
+Simulator hoặc iPhone đã được cấu hình signing trong Xcode, rồi nhấn **Run**.
+Để cập nhật native app sau khi sửa web code, chạy `pnpm build` và
+`pnpm exec cap sync` trước khi build/run lại. Không thể build iOS native trên
+Windows.
 
 iOS không cung cấp API liệt kê toàn bộ ứng dụng đã cài. Plugin chỉ dùng
 `canOpenURL` để kiểm tra danh mục URL scheme được khai báo trong
