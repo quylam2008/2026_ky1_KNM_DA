@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+    color: #173e2f;
+    background: #edf1ed;
+    font-synthesis: none;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+  }
+
+  button, select {
+    cursor: pointer;
+  }
+
+}
+
+@layer utilities {
+  .timer-ring {
+    background: conic-gradient(#d8b666 0deg 276deg, rgba(255,255,255,.12) 276deg 360deg);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.06), inset 0 0 25px rgba(255,255,255,.03);
+  }
+
+}
+
+.font-serif {
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  letter-spacing: -0.035em;
+}
+
+@media (min-width: 700px) {
+  .app-shell {
+    margin-top: 24px;
+    margin-bottom: 24px;
+    min-height: calc(100dvh - 48px);
+    border-radius: 34px;
+    overflow: hidden;
+  }
+
+  .auth-shell > section {
+    margin-top: 24px;
+    margin-bottom: 24px;
+    min-height: calc(100dvh - 48px);
+    border-radius: 34px;
+  }
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+.figma-custom-code-fragment {
+  display: contents;
+}
+
+.figma-bypass-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  padding: 8px 12px;
+  font: 600 14px/1.2 system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.figma-bypass-link:focus {
+  transform: translateY(0);
+}
