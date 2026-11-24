@@ -36,6 +36,11 @@ workflow chạy thành công, trang sẽ có địa chỉ
 `https://quylam2008.github.io/2026_ky1_KNM_DA/`. GitHub Pages chỉ host bản web;
 nó không cài app native lên thiết bị.
 
+Để mở bản web như ứng dụng trên iPhone, mở địa chỉ trên bằng Safari, chọn
+**Chia sẻ → Thêm vào màn hình chính**, rồi mở Focust từ biểu tượng vừa thêm.
+Manifest PWA giúp trang chạy độc lập, không có thanh địa chỉ Safari. Mở link
+trực tiếp trong Chrome vẫn là một trang web trong Chrome.
+
 ## Cửa hàng và phần thưởng
 
 Trước khi cập nhật Edge Function, chạy các migration trong
