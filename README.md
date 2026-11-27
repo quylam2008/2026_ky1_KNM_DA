@@ -48,6 +48,12 @@ Trước khi cập nhật Edge Function, chạy các migration trong
 cập nhật function `make-server-23149b0b` bằng hai tệp trong
 `supabase/functions/make-server-23149b0b/`.
 
+Để bật công cụ chỉnh streak và lịch sử hoạt động cho một tài khoản demo, lấy
+User UID tại **Authentication → Users**, rồi thêm secret `DEMO_USER_ID` bằng
+UID đó trong **Edge Functions → Secrets**. Sau đó deploy lại function. Chỉ tài
+khoản khớp UID này mới thấy mục **Tài khoản → Dữ liệu demo**; API cũng kiểm tra
+UID ở backend trước khi ghi dữ liệu. Bỏ secret này để tắt công cụ.
+
 Số dư, cây đã mua và yêu thích, lượt nhận thưởng hằng ngày, mục tiêu, tùy chọn
 thông báo và hộp thư thông báo trong ứng dụng được lưu trong Supabase. Hồ sơ,
 mục tiêu học tập và tùy chọn thông báo có thể chỉnh sửa ở trang Tài khoản. Sau

@@ -39,10 +39,12 @@ import {
   updateGoalSettings,
   updateNotificationSettings,
   updateStudyTask,
+  updateDemoStats,
   type AppUserView,
   type AppNotificationView,
   type FocusAppView as FocusApp,
   type FocusProgressView,
+  type DemoStatsView,
   type GoalSettingsView,
   type NotificationSettingsView,
   type RankingView,
@@ -52,7 +54,7 @@ import {
 
 type Page = 'home' | 'ranking' | 'garden' | 'shop' | 'account'
 type AuthPage = 'login' | 'signup' | 'forgot'
-type AccountSection = 'profile' | 'goals' | 'devices' | 'notifications'
+type AccountSection = 'profile' | 'goals' | 'devices' | 'notifications' | 'demo'
 type NotificationContextValue = { unreadCount: number; streak: number; onOpen: () => void }
 const NotificationContext = createContext<NotificationContextValue | null>(null)
 const normalizeFocusProgress = (
@@ -1757,9 +1759,12 @@ function Account({
   user,
   wallet,
   goals,
+  focusProgress,
+  demoMode,
   notificationSettings,
   onProfileUpdated,
   onGoalsUpdated,
+  onDemoStatsUpdated,
   onNotificationSettingsUpdated,
 }: {
   onLogout: () => void
@@ -1767,9 +1772,16 @@ function Account({
   user: AppUserView
   wallet: WalletView
   goals: GoalSettingsView
+  focusProgress: FocusProgressView
+  demoMode: boolean
   notificationSettings: NotificationSettingsView
   onProfileUpdated: (user: AppUserView) => void
   onGoalsUpdated: (goals: GoalSettingsView) => void
+  onDemoStatsUpdated: (data: {
+    profile: AppUserView
+    ranking: RankingView
+    focusProgress: FocusProgressView
+  }) => void
   onNotificationSettingsUpdated: (settings: NotificationSettingsView) => void
 }) {
   const [activeSection, setActiveSection] = useState<AccountSection | null>(null)
@@ -1785,10 +1797,12 @@ function Account({
         section={activeSection}
         user={user}
         goals={goals}
+        focusProgress={focusProgress}
         notificationSettings={notificationSettings}
         onBack={() => setActiveSection(null)}
         onProfileUpdated={onProfileUpdated}
         onGoalsUpdated={onGoalsUpdated}
+        onDemoStatsUpdated={onDemoStatsUpdated}
         onNotificationSettingsUpdated={onNotificationSettingsUpdated}
       />
     )
@@ -1860,6 +1874,18 @@ function Account({
                 <Icon name="chevron" size={16} className="text-[#9aa49e]" />
               </button>
             ))}
+          {demoMode && (
+            <button
+              onClick={() => setActiveSection('demo')}
+              className="flex w-full items-center border-t border-[#eef1ed] px-4 py-4 text-left text-sm"
+            >
+              <span className="mr-3 grid h-8 w-8 place-items-center rounded-xl bg-[#fff2dc] text-[#a56a2e]">
+                <Icon name="flame" size={16} />
+              </span>
+              <span className="flex-1 font-semibold text-[#315140]">Dữ liệu demo</span>
+              <Icon name="chevron" size={16} className="text-[#9aa49e]" />
+            </button>
+          )}
         </div>
         <button
           onClick={onLogout}
@@ -1880,23 +1906,33 @@ function AccountDetail({
   section,
   user,
   goals,
+  focusProgress,
   notificationSettings,
   onBack,
   onProfileUpdated,
   onGoalsUpdated,
+  onDemoStatsUpdated,
   onNotificationSettingsUpdated,
 }: {
   section: AccountSection
   user: AppUserView
   goals: GoalSettingsView
+  focusProgress: FocusProgressView
   notificationSettings: NotificationSettingsView
   onBack: () => void
   onProfileUpdated: (user: AppUserView) => void
   onGoalsUpdated: (goals: GoalSettingsView) => void
+  onDemoStatsUpdated: (data: {
+    profile: AppUserView
+    ranking: RankingView
+    focusProgress: FocusProgressView
+  }) => void
   onNotificationSettingsUpdated: (settings: NotificationSettingsView) => void
 }) {
   const [name, setName] = useState(user.name)
   const [username, setUsername] = useState(user.username)
+  const [demoStreak, setDemoStreak] = useState(String(user.streak))
+  const [demoHistory, setDemoHistory] = useState(focusProgress.dailyHistory)
   const [dailyMinutes, setDailyMinutes] = useState(String(goals.dailyMinutes))
   const [monthlyHours, setMonthlyHours] = useState(String(goals.monthlyHours))
   const [settings, setSettings] = useState(notificationSettings)
@@ -1907,6 +1943,7 @@ function AccountDetail({
     goals: 'Mục tiêu học tập',
     devices: 'Thiết bị IoT',
     notifications: 'Cài đặt thông báo',
+    demo: 'Dữ liệu demo',
   }[section]
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -1946,6 +1983,21 @@ function AccountDetail({
         return
       }
       onNotificationSettingsUpdated(result.data)
+      onBack()
+      return
+    }
+    if (section === 'demo') {
+      const input: DemoStatsView = {
+        streak: Number(demoStreak),
+        dailyHistory: demoHistory,
+      }
+      const result = await updateDemoStats(input)
+      setPending(false)
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      onDemoStatsUpdated(result.data)
       onBack()
     }
   }
@@ -2066,6 +2118,64 @@ function AccountDetail({
                   Đây là thông báo trong ứng dụng. Push khi ứng dụng đóng cần cấu hình FCM/APNs và
                   Web Push; Supabase hiện chỉ lưu dữ liệu.
                 </p>
+              </>
+            )}
+            {section === 'demo' && (
+              <>
+                <p className="rounded-xl bg-[#fff7e6] p-3 text-xs leading-5 text-[#8a6a2c]">
+                  Chỉnh dữ liệu mẫu cho tài khoản demo. Streak, tổng thời gian và biểu đồ 7 ngày
+                  sẽ được cập nhật đồng bộ.
+                </p>
+                <label className="block text-xs font-semibold text-[#557163]">
+                  Streak hiện tại (ngày)
+                  <input
+                    className="mt-2 h-12 w-full rounded-xl border border-[#dfe7df] px-3 text-sm text-[#173e2f] outline-none focus:border-[#4f8068] focus:ring-4 focus:ring-[#e5efe5]"
+                    type="number"
+                    min={0}
+                    max={36500}
+                    step={1}
+                    value={demoStreak}
+                    onChange={(event) => setDemoStreak(event.target.value)}
+                    required
+                  />
+                </label>
+                <fieldset className="space-y-3">
+                  <legend className="mb-2 text-xs font-semibold text-[#557163]">
+                    Thời gian tập trung từng ngày (phút)
+                  </legend>
+                  {demoHistory.map((entry, index) => (
+                    <label
+                      key={entry.date}
+                      className="flex items-center justify-between gap-3 text-xs font-medium text-[#557163]"
+                    >
+                      {new Intl.DateTimeFormat('vi-VN', {
+                        weekday: 'short',
+                        day: '2-digit',
+                        month: '2-digit',
+                        timeZone: 'Asia/Ho_Chi_Minh',
+                      }).format(new Date(`${entry.date}T12:00:00+07:00`))}
+                      <input
+                        className="h-10 w-24 rounded-xl border border-[#dfe7df] px-3 text-right text-sm text-[#173e2f] outline-none focus:border-[#4f8068] focus:ring-4 focus:ring-[#e5efe5]"
+                        type="number"
+                        min={0}
+                        max={1440}
+                        step={1}
+                        value={entry.minutes}
+                        onChange={(event) =>
+                          setDemoHistory((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, minutes: Number(event.target.value) }
+                                : item,
+                            ),
+                          )
+                        }
+                        aria-label={`Số phút tập trung ngày ${entry.date}`}
+                        required
+                      />
+                    </label>
+                  ))}
+                </fieldset>
               </>
             )}
             {error && (
@@ -2332,6 +2442,7 @@ function NotificationCenter({
 export default function FocustApp() {
   const [authed, setAuthed] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [demoMode, setDemoMode] = useState(false)
   const [user, setUser] = useState<AppUserView | null>(null)
   const [wallet, setWallet] = useState<WalletView | null>(null)
   const [authPage, setAuthPage] = useState<AuthPage>('login')
@@ -2357,6 +2468,7 @@ export default function FocustApp() {
     try {
       const data = await getBootstrap()
       setUser(data.user)
+      setDemoMode(data.demoMode)
       setWallet(data.wallet)
       setTasks(data.tasks)
       setApps(data.apps)
@@ -2373,6 +2485,7 @@ export default function FocustApp() {
       await logoutAppUser()
       setAuthed(false)
       setUser(null)
+      setDemoMode(false)
       setWallet(null)
     } finally {
       setLoading(false)
@@ -2498,6 +2611,8 @@ export default function FocustApp() {
           user={user}
           wallet={wallet ?? { balance: 0, ownedPlantIds: [], dailyRewardClaimed: false }}
           goals={goals}
+          focusProgress={focusProgress}
+          demoMode={demoMode}
           notificationSettings={notificationSettings}
           onProfileUpdated={(profile) => {
             setUser(profile)
@@ -2507,6 +2622,12 @@ export default function FocustApp() {
             setGoals(nextGoals)
             setNotice('Mục tiêu học tập đã được cập nhật.')
           }}
+          onDemoStatsUpdated={(data) => {
+            setUser(data.profile)
+            setRanking(data.ranking)
+            setFocusProgress(normalizeFocusProgress(data.focusProgress))
+            setNotice('Dữ liệu demo đã được đồng bộ.')
+          }}
           onNotificationSettingsUpdated={(settings) => {
             setNotificationSettings(settings)
             setNotice('Cài đặt thông báo đã được cập nhật.')
@@ -2514,6 +2635,7 @@ export default function FocustApp() {
           onLogout={async () => {
             await logoutAppUser()
             setUser(null)
+            setDemoMode(false)
             setWallet(null)
             setAuthed(false)
           }}
@@ -2523,6 +2645,7 @@ export default function FocustApp() {
     [
       apps,
       completeSession,
+      demoMode,
       focusProgress,
       favoritePlantIds,
       goals,

@@ -392,6 +392,7 @@ app.get(`${prefix}/bootstrap`, async (c) => {
     notifications,
     focusProgress,
     favoritePlantIds,
+    demoMode: Deno.env.get('DEMO_USER_ID') === auth.user.id,
   })
 })
 
@@ -417,6 +418,89 @@ app.put(`${prefix}/account/profile`, async (c) => {
   )
   if (username !== auth.profile.username) await kv.del(`username:${auth.profile.username}`)
   return c.json({ user: profile })
+})
+
+app.put(`${prefix}/account/demo-stats`, async (c) => {
+  const auth = await requireUser(c)
+  if ('response' in auth) return auth.response
+  if (!Deno.env.get('DEMO_USER_ID') || Deno.env.get('DEMO_USER_ID') !== auth.user.id)
+    return c.json({ error: 'Chức năng này chỉ dành cho tài khoản demo được cấu hình.' }, 403)
+
+  const body = await c.req.json()
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    return c.json({ error: 'Dữ liệu demo không hợp lệ.' }, 400)
+  const streak = body.streak
+  if (typeof streak !== 'number' || !Number.isInteger(streak) || streak < 0 || streak > 36500)
+    return c.json({ error: 'Streak phải là số nguyên từ 0 đến 36500.' }, 400)
+  if (!Array.isArray(body.dailyHistory) || body.dailyHistory.length !== 7)
+    return c.json({ error: 'Cần nhập đủ dữ liệu cho 7 ngày gần nhất.' }, 400)
+
+  const today = getTodayDateKey()
+  const expectedDates = Array.from({ length: 7 }, (_, index) =>
+    shiftDateKey(today, index - 6),
+  )
+  const dailyHistory: DailyFocusSummary[] = []
+  for (const [index, item] of body.dailyHistory.entries()) {
+    if (
+      typeof item !== 'object' ||
+      item === null ||
+      Array.isArray(item) ||
+      item.date !== expectedDates[index] ||
+      typeof item.minutes !== 'number' ||
+      !Number.isInteger(item.minutes) ||
+      item.minutes < 0 ||
+      item.minutes > 1440
+    ) {
+      return c.json({ error: 'Ngày hoặc số phút trong lịch sử không hợp lệ.' }, 400)
+    }
+    dailyHistory.push({ date: item.date, minutes: item.minutes })
+  }
+
+  const history = await getFocusHistory(auth.user.id)
+  const editedDates = new Set(expectedDates)
+  const oldWindowMinutes = history
+    .filter((entry) => editedDates.has(entry.date))
+    .reduce((total, entry) => total + entry.minutes, 0)
+  const newWindowMinutes = dailyHistory.reduce((total, entry) => total + entry.minutes, 0)
+  const focusMinutes = auth.profile.focusMinutes + newWindowMinutes - oldWindowMinutes
+  if (focusMinutes < 0)
+    return c.json({ error: 'Tổng thời gian tập trung không thể nhỏ hơn 0.' }, 400)
+
+  const updatedHistory = [
+    ...history.filter((entry) => !editedDates.has(entry.date)),
+    ...dailyHistory,
+  ]
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-365)
+  const profile: Profile = {
+    ...auth.profile,
+    focusMinutes,
+    streak,
+    ...(streak > 0 ? { lastFocusDay: today } : { lastFocusDay: undefined }),
+  }
+  const month = today.slice(0, 7)
+  const focusProgress = {
+    day: today,
+    month,
+    dailyMinutes: dailyHistory.find((entry) => entry.date === today)?.minutes ?? 0,
+    monthlyMinutes: updatedHistory
+      .filter((entry) => entry.date.startsWith(month))
+      .reduce((total, entry) => total + entry.minutes, 0),
+  }
+  await kv.mset(
+    [
+      `profile:${auth.user.id}`,
+      `focus-history:${auth.user.id}`,
+      `focus-progress:${auth.user.id}`,
+    ],
+    [profile, updatedHistory, focusProgress],
+  )
+
+  return c.json({
+    profile,
+    ranking: await buildRanking(profile),
+    focusProgress: await getFocusProgress(auth.user.id),
+  })
 })
 
 app.get(`${prefix}/account/goals`, async (c) => {

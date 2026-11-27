@@ -44,6 +44,11 @@ export type FocusProgressView = {
   dailyHistory: { date: string; minutes: number }[]
 }
 
+export type DemoStatsView = {
+  streak: number
+  dailyHistory: { date: string; minutes: number }[]
+}
+
 export type StudyTaskView = {
   id: string
   name: string
@@ -219,7 +224,27 @@ export const getBootstrap = () =>
     notifications: AppNotificationView[]
     focusProgress: FocusProgressView
     favoritePlantIds: string[]
+    demoMode: boolean
   }>('bootstrap')
+
+export async function updateDemoStats(input: DemoStatsView) {
+  try {
+    const result = await request<{
+      profile: AppUserView
+      ranking: RankingView
+      focusProgress: FocusProgressView
+    }>('account/demo-stats', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+    return { success: true as const, data: result }
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : 'Chưa thể cập nhật dữ liệu demo.',
+    }
+  }
+}
 
 export const getNotifications = async () => {
   const result = await request<{ notifications: AppNotificationView[] }>('notifications')
