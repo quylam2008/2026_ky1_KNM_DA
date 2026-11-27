@@ -48,6 +48,7 @@ type NativeDetector = {
     durationSeconds: number
   }) => Promise<{ started: boolean; message?: string }>
   stopFocusAppMonitoring?: () => Promise<void>
+  consumeRedAppResetRequest?: () => Promise<{ appName: string }>
 }
 
 declare global {
@@ -206,4 +207,14 @@ export async function stopFocusAppMonitoring() {
     throw new Error('Hãy cập nhật bản Android để dừng theo dõi ứng dụng.')
   }
   await detector.stopFocusAppMonitoring()
+}
+
+export async function consumeRedAppResetRequest() {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return null
+  const detector = getNativeDetector()
+  if (!detector?.consumeRedAppResetRequest) {
+    throw new Error('Hãy cập nhật bản Android để xử lý lựa chọn với app Đỏ.')
+  }
+  const result = await detector.consumeRedAppResetRequest()
+  return result.appName || null
 }

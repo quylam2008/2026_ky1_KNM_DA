@@ -216,6 +216,19 @@ public class InstalledAppsPlugin extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void consumeRedAppResetRequest(PluginCall call) {
+        android.content.SharedPreferences preferences = getContext().getSharedPreferences(
+            FocusAppMonitorService.PREFERENCES_NAME,
+            Context.MODE_PRIVATE
+        );
+        String appName = preferences.getString(FocusAppMonitorService.PENDING_RED_APP_RESET_KEY, "");
+        preferences.edit().remove(FocusAppMonitorService.PENDING_RED_APP_RESET_KEY).apply();
+        JSObject result = new JSObject();
+        result.put("appName", appName == null ? "" : appName);
+        call.resolve(result);
+    }
+
     private void resolveMonitorStart(PluginCall call, boolean started, String message) {
         JSObject result = new JSObject();
         result.put("started", started);

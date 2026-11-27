@@ -18,6 +18,7 @@ import {
   openUsageAccessSettings,
   startFocusAppMonitoring,
   stopFocusAppMonitoring,
+  consumeRedAppResetRequest,
   listenForUsbDeviceChanges,
   scanUsbDevices,
 } from './installed-apps'
@@ -612,9 +613,37 @@ function TimerCard({
   }, [ownedPlantIds, plantId])
   useEffect(() => {
     if (!running) return
-    const id = window.setInterval(() => setRemaining((r) => (r > 0 ? r - 1 : 0)), 1000)
+    let checking = false
+    const id = window.setInterval(() => {
+      if (checking) return
+      checking = true
+      void consumeRedAppResetRequest()
+        .then((appName) => {
+          if (appName) {
+            setRunning(false)
+            setRemaining(minutes * 60)
+            setMonitorMessage(`App Đỏ ${appName}: bộ đếm đã được đặt lại.`)
+            void stopFocusAppMonitoring().catch((error) =>
+              setMonitorMessage(
+                error instanceof Error ? error.message : 'Không thể dừng theo dõi app.',
+              ),
+            )
+            return
+          }
+          setRemaining((remainingTime) => (remainingTime > 0 ? remainingTime - 1 : 0))
+        })
+        .catch((error) => {
+          setMonitorMessage(
+            error instanceof Error ? error.message : 'Không thể kiểm tra ứng dụng vùng Đỏ.',
+          )
+          setRemaining((remainingTime) => (remainingTime > 0 ? remainingTime - 1 : 0))
+        })
+        .finally(() => {
+          checking = false
+        })
+    }, 1000)
     return () => window.clearInterval(id)
-  }, [running])
+  }, [minutes, running])
   useEffect(() => {
     if (resetTrigger === 0) return
     setRunning(false)
@@ -1845,11 +1874,9 @@ function Account({
   onGoalsUpdated,
   onDemoAccountUpdated,
   onNotificationSettingsUpdated,
-  onNotify,
 }: {
   onLogout: () => void
   onVip: () => void
-  onNotify: (message: string) => void
   user: AppUserView
   wallet: WalletView
   goals: GoalSettingsView
@@ -1882,7 +1909,6 @@ function Account({
         onGoalsUpdated={onGoalsUpdated}
         onDemoAccountUpdated={onDemoAccountUpdated}
         onNotificationSettingsUpdated={onNotificationSettingsUpdated}
-        onNotify={onNotify}
       />
     )
   }
@@ -2001,7 +2027,6 @@ function AccountDetail({
   onGoalsUpdated,
   onDemoAccountUpdated,
   onNotificationSettingsUpdated,
-  onNotify,
 }: {
   section: AccountSection
   user: AppUserView
@@ -2015,7 +2040,6 @@ function AccountDetail({
     ranking: RankingView
   }) => void
   onNotificationSettingsUpdated: (settings: NotificationSettingsView) => void
-  onNotify: (message: string) => void
 }) {
   const [name, setName] = useState(user.name)
   const [username, setUsername] = useState(user.username)
@@ -2028,46 +2052,14 @@ function AccountDetail({
     useState<Awaited<ReturnType<typeof scanUsbDevices>> | null>(null)
   const [usbScanning, setUsbScanning] = useState(false)
   const [usbError, setUsbError] = useState('')
-  const usbDeviceKeys = useRef<Set<string> | null>(null)
-  const applyUsbScan = useCallback(
-    (result: Awaited<ReturnType<typeof scanUsbDevices>>, notifyChanges: boolean) => {
-      const currentKeys = new Set(
-        result.devices.map((device) => `${device.deviceName}:${device.vendorId}:${device.productId}`),
-      )
-      const previousKeys = usbDeviceKeys.current
-      if (notifyChanges && previousKeys) {
-        const connected = result.devices.filter(
-          (device) =>
-            !previousKeys.has(`${device.deviceName}:${device.vendorId}:${device.productId}`),
-        )
-        const disconnected = [...previousKeys].filter((key) => !currentKeys.has(key))
-        if (connected.length) {
-          const names = connected.map(
-            (device) => device.productName || device.manufacturerName || 'thiết bị USB',
-          )
-          onNotify(
-            connected.length === 1
-              ? `Đã kết nối ${names[0]} qua USB-C/OTG.`
-              : `Đã kết nối ${connected.length} thiết bị qua USB-C/OTG.`,
-          )
-        } else if (disconnected.length) {
-          onNotify(
-            disconnected.length === 1
-              ? 'Thiết bị USB đã ngắt kết nối.'
-              : `${disconnected.length} thiết bị USB đã ngắt kết nối.`,
-          )
-        }
-      }
-      usbDeviceKeys.current = currentKeys
-      setUsbScan(result)
-    },
-    [onNotify],
-  )
+  const applyUsbScan = useCallback((result: Awaited<ReturnType<typeof scanUsbDevices>>) => {
+    setUsbScan(result)
+  }, [])
   const refreshUsbDevices = useCallback(async () => {
     setUsbScanning(true)
     setUsbError('')
     try {
-      applyUsbScan(await scanUsbDevices(), false)
+      applyUsbScan(await scanUsbDevices())
     } catch (scanError) {
       setUsbError(scanError instanceof Error ? scanError.message : 'Chưa thể quét USB.')
     } finally {
@@ -2090,7 +2082,7 @@ function AccountDetail({
             note: result.usbHostSupported
               ? 'Thiết bị USB-C/OTG được cập nhật theo trạng thái cắm/rút.'
               : 'Điện thoại này không hỗ trợ USB Host/OTG.',
-          }, true)
+          })
         })
         if (!active) {
           if (listener) void listener.remove()
@@ -2098,7 +2090,7 @@ function AccountDetail({
         }
         if (listener) removeListener = () => void listener.remove()
         const currentScan = await scanUsbDevices()
-        if (active) applyUsbScan(currentScan, true)
+        if (active) applyUsbScan(currentScan)
       } catch (scanError) {
         if (active) {
           setUsbError(scanError instanceof Error ? scanError.message : 'Chưa thể quét USB.')
@@ -2658,6 +2650,80 @@ export default function FocustApp() {
     else setLoading(false)
   }, [loadData])
   useEffect(() => {
+    if (!authed || !user) return
+    let active = true
+    let removeListener: (() => void) | undefined
+    let listenerEventVersion = 0
+    let previousKeys: Set<string> | null = null
+    const getDeviceKeys = (
+      devices: Awaited<ReturnType<typeof scanUsbDevices>>['devices'],
+    ) => new Set(devices.map((device) => `${device.deviceName}:${device.vendorId}:${device.productId}`))
+    const updateUsbSnapshot = (
+      devices: Awaited<ReturnType<typeof scanUsbDevices>>['devices'],
+      notifyChanges: boolean,
+    ) => {
+      const currentKeys = getDeviceKeys(devices)
+      if (notifyChanges && previousKeys) {
+        const connected = devices.filter(
+          (device) =>
+            !previousKeys?.has(`${device.deviceName}:${device.vendorId}:${device.productId}`),
+        )
+        const disconnected = [...previousKeys].filter((key) => !currentKeys.has(key))
+        if (connected.length) {
+          const names = connected.map(
+            (device) => device.productName || device.manufacturerName || 'thiết bị USB',
+          )
+          setNotice(
+            connected.length === 1
+              ? `Đã kết nối ${names[0]} qua USB-C/OTG.`
+              : `Đã kết nối ${connected.length} thiết bị qua USB-C/OTG.`,
+          )
+        } else if (disconnected.length) {
+          setNotice(
+            disconnected.length === 1
+              ? 'Thiết bị USB đã ngắt kết nối.'
+              : `${disconnected.length} thiết bị USB đã ngắt kết nối.`,
+          )
+        }
+      }
+      previousKeys = currentKeys
+    }
+    const initializeUsbNotifications = async () => {
+      try {
+        const initialScan = await scanUsbDevices()
+        if (!active) return
+        previousKeys = getDeviceKeys(initialScan.devices)
+        const listener = await listenForUsbDeviceChanges((result) => {
+          if (active) {
+            listenerEventVersion += 1
+            updateUsbSnapshot(result.devices, true)
+          }
+        })
+        if (!active) {
+          if (listener) void listener.remove()
+          return
+        }
+        if (listener) removeListener = () => void listener.remove()
+        const eventVersionBeforeScan = listenerEventVersion
+        const currentScan = await scanUsbDevices()
+        if (active && listenerEventVersion === eventVersionBeforeScan) {
+          updateUsbSnapshot(currentScan.devices, true)
+        }
+      } catch (error) {
+        if (active) {
+          setNotice(
+            error instanceof Error ? error.message : 'Không thể theo dõi kết nối thiết bị USB.',
+          )
+        }
+      }
+    }
+    void initializeUsbNotifications()
+    return () => {
+      active = false
+      removeListener?.()
+    }
+  }, [authed, user?.id])
+  useEffect(() => {
     if (page !== 'garden' && page !== 'shop') return
     let cancelled = false
     const loadPlantImages = async () => {
@@ -2859,7 +2925,6 @@ export default function FocustApp() {
             }
             setNotice('Dữ liệu demo đã được đồng bộ.')
           }}
-          onNotify={setNotice}
           onNotificationSettingsUpdated={(settings) => {
             setNotificationSettings(settings)
             setNotice('Cài đặt thông báo đã được cập nhật.')
