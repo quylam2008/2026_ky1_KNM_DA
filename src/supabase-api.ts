@@ -9,6 +9,7 @@ export type AppUserView = {
   username: string
   focusMinutes: number
   streak: number
+  isVip?: boolean
 }
 
 export type WalletView = {
@@ -44,11 +45,6 @@ export type FocusProgressView = {
   dailyHistory: { date: string; minutes: number }[]
 }
 
-export type DemoStatsView = {
-  streak: number
-  dailyHistory: { date: string; minutes: number }[]
-}
-
 export type StudyTaskView = {
   id: string
   name: string
@@ -80,6 +76,24 @@ export type RankingView = {
   top: RankingEntry[]
   current: RankingEntry | null
   tiers: { name: string; minMinutes: number }[]
+}
+
+export type DemoAccountSummaryView = {
+  id: string
+  name: string
+  username: string
+}
+
+export type DemoAccountView = {
+  user: Omit<AppUserView, 'email'>
+  tasks: StudyTaskView[]
+  apps: FocusAppView[]
+  wallet: WalletView
+  goals: GoalSettingsView
+  notificationSettings: NotificationSettingsView
+  notifications: AppNotificationView[]
+  focusProgress: FocusProgressView
+  favoritePlantIds: string[]
 }
 
 type Session = {
@@ -227,13 +241,18 @@ export const getBootstrap = () =>
     demoMode: boolean
   }>('bootstrap')
 
-export async function updateDemoStats(input: DemoStatsView) {
+export const getDemoAccounts = () =>
+  request<{ accounts: DemoAccountSummaryView[] }>('demo/accounts')
+
+export const getDemoAccount = (id: string) =>
+  request<{ account: DemoAccountView }>(`demo/accounts/${encodeURIComponent(id)}`)
+
+export async function updateDemoAccount(id: string, input: DemoAccountView) {
   try {
     const result = await request<{
-      profile: AppUserView
+      account: DemoAccountView
       ranking: RankingView
-      focusProgress: FocusProgressView
-    }>('account/demo-stats', {
+    }>(`demo/accounts/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(input),
     })

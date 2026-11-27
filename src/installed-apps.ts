@@ -1,6 +1,6 @@
 'use client'
 
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 
 export type DetectedApp = {
   identifier: string
@@ -14,8 +14,29 @@ type TrackedApp = {
   group: 'red' | 'yellow'
 }
 
+export type UsbDeviceView = {
+  deviceName: string
+  manufacturerName: string
+  productName: string
+  vendorId: number
+  productId: number
+  deviceClass: number
+  interfaceCount: number
+  permissionGranted: boolean
+}
+
+type UsbDevicesResult = {
+  usbHostSupported: boolean
+  devices: UsbDeviceView[]
+}
+
 type NativeDetector = {
   getInstalledApps: () => Promise<{ apps: DetectedApp[] }>
+  getUsbDevices?: () => Promise<UsbDevicesResult>
+  addListener?: (
+    eventName: 'usbDevicesChanged',
+    listener: (result: UsbDevicesResult) => void,
+  ) => Promise<PluginListenerHandle>
   getMonitoringPermissions?: () => Promise<{
     usageAccess: boolean
     notificationsEnabled: boolean
@@ -70,6 +91,39 @@ export async function detectInstalledApps(): Promise<
         ? 'iOS chỉ trả về các ứng dụng thuộc danh mục URL scheme được khai báo trước.'
         : undefined,
   }
+}
+
+export async function scanUsbDevices() {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+    return {
+      supported: false,
+      usbHostSupported: false,
+      devices: [] as UsbDeviceView[],
+      note: 'Quét USB chỉ được hỗ trợ trong bản Android native; iPhone và trình duyệt chưa hỗ trợ.',
+    }
+  }
+
+  const detector = getNativeDetector()
+  if (!detector?.getUsbDevices) {
+    throw new Error('Hãy cập nhật bản Android để quét thiết bị USB.')
+  }
+  const result = await detector.getUsbDevices()
+  return {
+    supported: result.usbHostSupported,
+    ...result,
+    note: result.usbHostSupported
+      ? 'Cắm thiết bị bằng cáp truyền dữ liệu và bật USB OTG/USB Host nếu điện thoại yêu cầu.'
+      : 'Điện thoại này không hỗ trợ USB Host/OTG.',
+  }
+}
+
+export async function listenForUsbDeviceChanges(
+  listener: (result: UsbDevicesResult) => void,
+) {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') return undefined
+  const detector = getNativeDetector()
+  if (!detector?.addListener) return undefined
+  return detector.addListener('usbDevicesChanged', listener)
 }
 
 export async function getAppMonitoringPermissions() {

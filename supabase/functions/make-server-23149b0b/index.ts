@@ -12,9 +12,29 @@ type Profile = {
   username: string
   focusMinutes: number
   streak: number
+  isVip?: boolean
   lastFocusDay?: string
 }
 type StudyTask = { id: string; name: string; durationMinutes: number }
+type FocusApp = {
+  id: string
+  identifier: string
+  name: string
+  platform: 'android' | 'ios'
+  group: Group
+}
+type Wallet = { balance: number; ownedPlantIds: string[]; dailyRewardClaimed: boolean }
+type DemoAccountData = {
+  user: Omit<Profile, 'email'>
+  tasks: StudyTask[]
+  apps: FocusApp[]
+  wallet: Wallet
+  goals: GoalSettings
+  notificationSettings: NotificationSettings
+  notifications: AppNotification[]
+  focusProgress: FocusProgress
+  favoritePlantIds: string[]
+}
 
 const app = new Hono()
 const prefix = '/make-server-23149b0b'
@@ -39,6 +59,9 @@ const shopPlants = [
   { id: 'green_pine', name: 'Tùng xanh', price: 480 },
   { id: 'silver_leaf', name: 'Lá bạc', price: 700 },
 ] as const
+const vipPlantIds = ['night_sakura', 'golden_ancient', 'aurora_forest'] as const
+const hasVipPlantAccess = (isVip: boolean | undefined, plantId: string) =>
+  isVip === true && vipPlantIds.some((vipPlantId) => vipPlantId === plantId)
 type GoalSettings = { dailyMinutes: number; monthlyHours: number }
 type NotificationSettings = { focusRewards: boolean; dailyRewards: boolean; shopUpdates: boolean }
 type AppNotification = {
@@ -81,6 +104,21 @@ const defaultNotificationSettings: NotificationSettings = {
   dailyRewards: true,
   shopUpdates: true,
 }
+
+const parseUserIdList = (value: string | undefined) =>
+  [...new Set((value ?? '').split(',').map((id) => id.trim()).filter(Boolean))]
+
+const getDemoTargetIds = () => {
+  const configuredIds = Deno.env.get('DEMO_USER_IDS')
+  return parseUserIdList(configuredIds ?? Deno.env.get('DEMO_USER_ID'))
+}
+
+const getDemoAdminIds = () => {
+  const configuredIds = Deno.env.get('DEMO_ADMIN_USER_IDS')
+  return parseUserIdList(configuredIds ?? Deno.env.get('DEMO_USER_ID'))
+}
+
+const isDemoAdmin = (userId: string) => getDemoAdminIds().includes(userId)
 
 const getGoals = async (userId: string): Promise<GoalSettings> =>
   ((await kv.get(`goals:${userId}`)) as GoalSettings | undefined) ?? defaultGoals
@@ -186,7 +224,7 @@ const normalizeUsername = (value: unknown) => {
   return /^[a-z0-9._-]{3,24}$/.test(username) ? username : null
 }
 
-const getWallet = async (userId: string) => {
+const getWallet = async (userId: string): Promise<Wallet> => {
   const client = adminClient()
   const { error: insertError } = await client
     .from('focust_wallets')
@@ -219,6 +257,13 @@ const getWallet = async (userId: string) => {
   }
 }
 
+const canUsePlant = async (userId: string, plantId: string) => {
+  const wallet = await getWallet(userId)
+  if (wallet.ownedPlantIds.includes(plantId)) return true
+  const profile = (await kv.get(`profile:${userId}`)) as Profile | undefined
+  return hasVipPlantAccess(profile?.isVip, plantId)
+}
+
 const currentUser = async (c: any) => {
   const authorization = c.req.header('Authorization') ?? ''
   const token = authorization.replace(/^Bearer\s+/i, '')
@@ -234,6 +279,41 @@ const requireUser = async (c: any) => {
   const profile = (await kv.get(`profile:${user.id}`)) as Profile | undefined
   if (!profile) return { response: c.json({ error: 'Không tìm thấy hồ sơ.' }, 404) }
   return { user, profile }
+}
+
+const getDemoAccountData = async (userId: string): Promise<DemoAccountData | null> => {
+  const profile = (await kv.get(`profile:${userId}`)) as Profile | undefined
+  if (!profile) return null
+  const [tasks, apps, wallet, goals, notificationSettings, notifications, focusProgress, favoritePlantIds] =
+    await Promise.all([
+      kv.get(`tasks:${userId}`),
+      kv.get(`apps:${userId}`),
+      getWallet(userId),
+      getGoals(userId),
+      getNotificationSettings(userId),
+      getNotifications(userId),
+      getFocusProgress(userId),
+      getFavoritePlantIds(userId),
+    ])
+  return {
+      user: {
+        id: profile.id,
+        name: profile.name,
+        username: profile.username,
+        focusMinutes: profile.focusMinutes,
+        streak: profile.streak,
+        isVip: profile.isVip === true,
+        ...(profile.lastFocusDay ? { lastFocusDay: profile.lastFocusDay } : {}),
+      },
+    tasks: Array.isArray(tasks) ? tasks as StudyTask[] : starterTasks,
+    apps: Array.isArray(apps) ? apps as FocusApp[] : [],
+    wallet,
+    goals,
+    notificationSettings,
+    notifications,
+    focusProgress,
+    favoritePlantIds,
+  }
 }
 
 const tierProgress = (minutes: number) => {
@@ -314,6 +394,7 @@ app.post(`${prefix}/auth/signup`, async (c) => {
     username,
     focusMinutes: 0,
     streak: 0,
+    isVip: false,
   }
   await kv.mset(
     [`profile:${profile.id}`, `username:${username}`, `tasks:${profile.id}`, `apps:${profile.id}`],
@@ -382,7 +463,7 @@ app.get(`${prefix}/bootstrap`, async (c) => {
       getFavoritePlantIds(auth.user.id),
     ])
   return c.json({
-    user: auth.profile,
+    user: { ...auth.profile, isVip: auth.profile.isVip === true },
     tasks,
     apps: apps ?? [],
     ranking,
@@ -392,8 +473,284 @@ app.get(`${prefix}/bootstrap`, async (c) => {
     notifications,
     focusProgress,
     favoritePlantIds,
-    demoMode: Deno.env.get('DEMO_USER_ID') === auth.user.id,
+    demoMode: isDemoAdmin(auth.user.id),
   })
+})
+
+app.get(`${prefix}/demo/accounts`, async (c) => {
+  const auth = await requireUser(c)
+  if ('response' in auth) return auth.response
+  if (!isDemoAdmin(auth.user.id))
+    return c.json({ error: 'Chức năng này chỉ dành cho quản trị viên demo.' }, 403)
+
+  const accounts = await Promise.all(
+    getDemoTargetIds().map(async (id) => {
+      const profile = (await kv.get(`profile:${id}`)) as Profile | undefined
+      return profile
+        ? { id: profile.id, name: profile.name, username: profile.username }
+        : null
+    }),
+  )
+  return c.json({ accounts: accounts.filter((account) => account !== null) })
+})
+
+app.get(`${prefix}/demo/accounts/:id`, async (c) => {
+  const auth = await requireUser(c)
+  if ('response' in auth) return auth.response
+  if (!isDemoAdmin(auth.user.id))
+    return c.json({ error: 'Chức năng này chỉ dành cho quản trị viên demo.' }, 403)
+  const targetId = c.req.param('id')
+  if (!getDemoTargetIds().includes(targetId))
+    return c.json({ error: 'Tài khoản này không nằm trong danh sách demo được quản lý.' }, 403)
+  const account = await getDemoAccountData(targetId)
+  if (!account) return c.json({ error: 'Không tìm thấy tài khoản demo.' }, 404)
+  return c.json({ account })
+})
+
+app.put(`${prefix}/demo/accounts/:id`, async (c) => {
+  const auth = await requireUser(c)
+  if ('response' in auth) return auth.response
+  if (!isDemoAdmin(auth.user.id))
+    return c.json({ error: 'Chức năng này chỉ dành cho quản trị viên demo.' }, 403)
+  const targetId = c.req.param('id')
+  if (!getDemoTargetIds().includes(targetId))
+    return c.json({ error: 'Tài khoản này không nằm trong danh sách demo được quản lý.' }, 403)
+
+  const existingProfile = (await kv.get(`profile:${targetId}`)) as Profile | undefined
+  if (!existingProfile) return c.json({ error: 'Không tìm thấy tài khoản demo.' }, 404)
+  const body = await c.req.json()
+  if (typeof body !== 'object' || body === null || Array.isArray(body))
+    return c.json({ error: 'Dữ liệu demo không hợp lệ.' }, 400)
+
+  const userInput = body.user
+  const name =
+    typeof userInput?.name === 'string' ? userInput.name.trim().replace(/\s+/g, ' ') : ''
+  const username = normalizeUsername(userInput?.username)
+  const focusMinutes = userInput?.focusMinutes
+  const streak = userInput?.streak
+  if (
+    name.length < 2 ||
+    name.length > 50 ||
+    !username ||
+    !Number.isInteger(focusMinutes) ||
+    focusMinutes < 0 ||
+    focusMinutes > 2_000_000_000 ||
+    !Number.isInteger(streak) ||
+    streak < 0 ||
+    streak > 36500 ||
+    typeof userInput?.isVip !== 'boolean'
+  ) {
+    return c.json({ error: 'Tên, tên đăng nhập hoặc thống kê tài khoản không hợp lệ.' }, 400)
+  }
+
+  const goalsInput = body.goals
+  const dailyMinutes = goalsInput?.dailyMinutes
+  const monthlyHours = goalsInput?.monthlyHours
+  if (
+    !Number.isInteger(dailyMinutes) ||
+    dailyMinutes < 15 ||
+    dailyMinutes > 1440 ||
+    !Number.isInteger(monthlyHours) ||
+    monthlyHours < 1 ||
+    monthlyHours > 744
+  ) {
+    return c.json({ error: 'Mục tiêu học tập không hợp lệ.' }, 400)
+  }
+
+  const walletInput = body.wallet
+  if (
+    !Number.isInteger(walletInput?.balance) ||
+    walletInput.balance < 0 ||
+    walletInput.balance > 2_000_000_000 ||
+    typeof walletInput.dailyRewardClaimed !== 'boolean' ||
+    !Array.isArray(walletInput.ownedPlantIds) ||
+    walletInput.ownedPlantIds.some(
+      (id: unknown) => typeof id !== 'string' || !shopPlants.some((plant) => plant.id === id),
+    )
+  ) {
+    return c.json({ error: 'Ví hoặc danh sách cây đã mua không hợp lệ.' }, 400)
+  }
+  const ownedPlantIds = [...new Set(walletInput.ownedPlantIds as string[])]
+
+  const notificationSettings = body.notificationSettings
+  if (
+    typeof notificationSettings?.focusRewards !== 'boolean' ||
+    typeof notificationSettings?.dailyRewards !== 'boolean' ||
+    typeof notificationSettings?.shopUpdates !== 'boolean'
+  ) {
+    return c.json({ error: 'Cài đặt thông báo không hợp lệ.' }, 400)
+  }
+
+  const dailyHistoryInput = body.focusProgress?.dailyHistory
+  if (!Array.isArray(dailyHistoryInput) || dailyHistoryInput.length !== 7)
+    return c.json({ error: 'Cần nhập đủ dữ liệu cho 7 ngày gần nhất.' }, 400)
+  const today = getTodayDateKey()
+  const expectedDates = Array.from({ length: 7 }, (_, index) =>
+    shiftDateKey(today, index - 6),
+  )
+  const dailyHistory: DailyFocusSummary[] = []
+  for (const [index, item] of dailyHistoryInput.entries()) {
+    if (
+      typeof item !== 'object' ||
+      item === null ||
+      Array.isArray(item) ||
+      item.date !== expectedDates[index] ||
+      !Number.isInteger(item.minutes) ||
+      item.minutes < 0 ||
+      item.minutes > 1440
+    ) {
+      return c.json({ error: 'Ngày hoặc số phút trong lịch sử không hợp lệ.' }, 400)
+    }
+    dailyHistory.push({ date: item.date, minutes: item.minutes })
+  }
+
+  const tasks = body.tasks
+  if (
+    !Array.isArray(tasks) ||
+    tasks.length > 100 ||
+    tasks.some(
+      (task: any) =>
+        !task ||
+        typeof task.id !== 'string' ||
+        task.id.length < 1 ||
+        task.id.length > 100 ||
+        typeof task.name !== 'string' ||
+        task.name.trim().length < 2 ||
+        task.name.trim().length > 50 ||
+        !Number.isInteger(task.durationMinutes) ||
+        task.durationMinutes < 1 ||
+        task.durationMinutes > 1440,
+    ) ||
+    new Set(tasks.map((task: StudyTask) => task.id)).size !== tasks.length
+  ) {
+    return c.json({ error: 'Danh sách môn học không hợp lệ.' }, 400)
+  }
+
+  const apps = body.apps
+  if (
+    !Array.isArray(apps) ||
+    apps.length > 250 ||
+    apps.some(
+      (item: any) =>
+        !item ||
+        typeof item.id !== 'string' ||
+        item.id.length < 1 ||
+        item.id.length > 180 ||
+        typeof item.identifier !== 'string' ||
+        item.identifier.length < 1 ||
+        item.identifier.length > 180 ||
+        typeof item.name !== 'string' ||
+        item.name.trim().length < 1 ||
+        item.name.trim().length > 80 ||
+        !['android', 'ios'].includes(item.platform) ||
+        !['red', 'yellow', 'green'].includes(item.group),
+    ) ||
+    new Set(apps.map((item: FocusApp) => item.id)).size !== apps.length
+  ) {
+    return c.json({ error: 'Danh sách ứng dụng không hợp lệ.' }, 400)
+  }
+
+  const notifications = body.notifications
+  if (
+    !Array.isArray(notifications) ||
+    notifications.length > 50 ||
+    notifications.some(
+      (item: any) =>
+        !item ||
+        typeof item.id !== 'string' ||
+        item.id.length < 1 ||
+        item.id.length > 100 ||
+        !['focus', 'daily', 'shop', 'system'].includes(item.category) ||
+        typeof item.title !== 'string' ||
+        item.title.trim().length < 1 ||
+        item.title.length > 120 ||
+        typeof item.message !== 'string' ||
+        item.message.trim().length < 1 ||
+        item.message.length > 500 ||
+        typeof item.createdAt !== 'string' ||
+        !Number.isFinite(Date.parse(item.createdAt)) ||
+        typeof item.read !== 'boolean',
+    ) ||
+    new Set(notifications.map((item: AppNotification) => item.id)).size !== notifications.length
+  ) {
+    return c.json({ error: 'Danh sách thông báo không hợp lệ.' }, 400)
+  }
+
+  const isVip = userInput.isVip
+  const favoritePlantIds = body.favoritePlantIds
+  if (
+    !Array.isArray(favoritePlantIds) ||
+    favoritePlantIds.some(
+      (id: unknown) =>
+        typeof id !== 'string' ||
+        (!ownedPlantIds.includes(id) && !hasVipPlantAccess(isVip, id)),
+    )
+  ) {
+    return c.json({ error: 'Cây yêu thích phải thuộc danh sách cây đã mua.' }, 400)
+  }
+
+  const usernameMapping = (await kv.get(`username:${username}`)) as
+    | { userId: string; email: string }
+    | undefined
+  if (usernameMapping && usernameMapping.userId !== targetId)
+    return c.json({ error: 'Tên đăng nhập đã được tài khoản khác sử dụng.' }, 409)
+
+  const history = await getFocusHistory(targetId)
+  const editedDates = new Set(expectedDates)
+  const updatedHistory = [
+    ...history.filter((entry) => !editedDates.has(entry.date)),
+    ...dailyHistory,
+  ]
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .slice(-365)
+  const month = today.slice(0, 7)
+  const profile: Profile = {
+    ...existingProfile,
+    name,
+    username,
+    focusMinutes,
+    streak,
+    isVip,
+    ...(streak > 0 ? { lastFocusDay: today } : { lastFocusDay: undefined }),
+  }
+  const focusProgress = {
+    day: today,
+    month,
+    dailyMinutes: dailyHistory.find((entry) => entry.date === today)?.minutes ?? 0,
+    monthlyMinutes: updatedHistory
+      .filter((entry) => entry.date.startsWith(month))
+      .reduce((total, entry) => total + entry.minutes, 0),
+  }
+  const entries = [
+    { key: `profile:${targetId}`, value: profile },
+    { key: `tasks:${targetId}`, value: tasks },
+    { key: `apps:${targetId}`, value: apps },
+    { key: `goals:${targetId}`, value: { dailyMinutes, monthlyHours } },
+    { key: `notification-settings:${targetId}`, value: notificationSettings },
+    { key: `notifications:${targetId}`, value: notifications },
+    { key: `favorite-plants:${targetId}`, value: [...new Set(favoritePlantIds)] },
+    { key: `focus-history:${targetId}`, value: updatedHistory },
+    { key: `focus-progress:${targetId}`, value: focusProgress },
+  ]
+  const { error: saveError } = await adminClient().rpc('focust_update_demo_account', {
+    p_user_id: targetId,
+    p_email: existingProfile.email,
+    p_old_username: existingProfile.username,
+    p_new_username: username,
+    p_entries: entries,
+    p_wallet_balance: walletInput.balance,
+    p_owned_plant_ids: ownedPlantIds,
+    p_daily_reward_claimed: walletInput.dailyRewardClaimed,
+    p_claim_date: today,
+  })
+  if (saveError) {
+    console.error('Demo account update failed:', saveError.message)
+    return c.json({ error: 'Không thể lưu dữ liệu demo. Hãy kiểm tra migration mới nhất đã được áp dụng.' }, 500)
+  }
+
+  const account = await getDemoAccountData(targetId)
+  if (!account) return c.json({ error: 'Đã lưu nhưng không thể tải lại tài khoản demo.' }, 500)
+  return c.json({ account, ranking: await buildRanking(profile) })
 })
 
 app.put(`${prefix}/account/profile`, async (c) => {
@@ -423,7 +780,7 @@ app.put(`${prefix}/account/profile`, async (c) => {
 app.put(`${prefix}/account/demo-stats`, async (c) => {
   const auth = await requireUser(c)
   if ('response' in auth) return auth.response
-  if (!Deno.env.get('DEMO_USER_ID') || Deno.env.get('DEMO_USER_ID') !== auth.user.id)
+  if (!isDemoAdmin(auth.user.id) || !getDemoTargetIds().includes(auth.user.id))
     return c.json({ error: 'Chức năng này chỉ dành cho tài khoản demo được cấu hình.' }, 403)
 
   const body = await c.req.json()
@@ -571,7 +928,13 @@ app.put(`${prefix}/garden/favorites`, async (c) => {
     if (!plantIds.includes(plantId)) plantIds.push(plantId)
   }
   const wallet = await getWallet(auth.user.id)
-  if (plantIds.some((plantId) => !wallet.ownedPlantIds.includes(plantId))) {
+  if (
+    plantIds.some(
+      (plantId) =>
+        !wallet.ownedPlantIds.includes(plantId) &&
+        !hasVipPlantAccess(auth.profile.isVip, plantId),
+    )
+  ) {
     return c.json({ error: 'Chỉ có thể đánh dấu cây đã sở hữu.' }, 400)
   }
   await kv.set(`favorite-plants:${auth.user.id}`, plantIds)
@@ -744,9 +1107,8 @@ app.post(`${prefix}/focus-sessions`, async (c) => {
   if (!task) return c.json({ error: 'Vui lòng chọn môn học đã lưu.' }, 400)
   if (body.plantId != null && typeof body.plantId !== 'string')
     return c.json({ error: 'Cây đã chọn không hợp lệ.' }, 400)
-  const wallet = await getWallet(auth.user.id)
   const plantId = typeof body.plantId === 'string' ? body.plantId : null
-  if (plantId && !wallet.ownedPlantIds.includes(plantId))
+  if (plantId && !(await canUsePlant(auth.user.id, plantId)))
     return c.json({ error: 'Cây đã chọn không thuộc khu vườn của bạn.' }, 400)
 
   const today = getTodayDateKey()

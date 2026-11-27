@@ -48,11 +48,27 @@ Trước khi cập nhật Edge Function, chạy các migration trong
 cập nhật function `make-server-23149b0b` bằng hai tệp trong
 `supabase/functions/make-server-23149b0b/`.
 
-Để bật công cụ chỉnh streak và lịch sử hoạt động cho một tài khoản demo, lấy
-User UID tại **Authentication → Users**, rồi thêm secret `DEMO_USER_ID` bằng
-UID đó trong **Edge Functions → Secrets**. Sau đó deploy lại function. Chỉ tài
-khoản khớp UID này mới thấy mục **Tài khoản → Dữ liệu demo**; API cũng kiểm tra
-UID ở backend trước khi ghi dữ liệu. Bỏ secret này để tắt công cụ.
+Để bật công cụ quản lý nhiều tài khoản demo:
+
+1. Lấy User UID của các tài khoản demo tại **Authentication → Users**.
+2. Thêm secret `DEMO_USER_IDS` với các UID được phép chỉnh sửa, phân tách bằng
+   dấu phẩy.
+3. Thêm secret `DEMO_ADMIN_USER_IDS` với UID của tài khoản được phép mở trang
+   quản lý, cũng phân tách bằng dấu phẩy.
+4. Chạy migration `20261127000100_focust_demo_admin.sql` trong Supabase SQL
+   Editor, rồi deploy lại Edge Function.
+
+Chỉ tài khoản quản trị mới thấy **Tài khoản → Dữ liệu demo**. Tại trang này có
+thể chọn tài khoản được allowlist và cập nhật hồ sơ hiển thị, trạng thái VIP,
+streak, tổng phút, lịch sử 7 ngày, mục tiêu, nhiệm vụ, nhóm ứng dụng, ví/cây,
+yêu thích và thông báo. VIP mở khóa các cây VIP trong cửa hàng, khu vườn và phiên
+tập trung. Email và mật khẩu đăng nhập không được chỉnh sửa. Backend kiểm tra
+quyền quản trị và danh sách UID mục tiêu trước mỗi lần đọc/ghi.
+
+Secret `DEMO_USER_ID` cũ vẫn hoạt động nếu chưa cấu hình hai secret danh sách:
+UID đó vừa là tài khoản được quản lý vừa là quản trị viên. Khi chuyển sang danh
+sách, hãy đặt rõ cả `DEMO_USER_IDS` và `DEMO_ADMIN_USER_IDS`. Bỏ secret danh
+sách để tắt quyền tương ứng.
 
 Số dư, cây đã mua và yêu thích, lượt nhận thưởng hằng ngày, mục tiêu, tùy chọn
 thông báo và hộp thư thông báo trong ứng dụng được lưu trong Supabase. Hồ sơ,
@@ -75,8 +91,10 @@ sơ người dùng trong KV store của Edge Function.
 
 Thông báo hiện được lưu để xem trong ứng dụng và có thể đánh dấu đã đọc. Push
 notification khi ứng dụng đóng cần cấu hình thêm dịch vụ gửi thông báo cho Web,
-Android và iOS. Tích hợp thiết bị IoT thật cũng cần thông tin model và giao thức
-kết nối của thiết bị.
+Android và iOS. Trang Thiết bị IoT hiện quét thiết bị USB Host/OTG trên Android
+native khi mở trang, cập nhật khi cắm/rút trong lúc trang đang mở và hỗ trợ quét
+lại thủ công; iOS và trình duyệt chưa hỗ trợ. Quét chỉ nhận diện thông tin USB
+cơ bản, việc đọc/điều khiển thiết bị cần model và giao thức tương ứng.
 
 ## Build và đồng bộ native
 
@@ -109,6 +127,12 @@ Trong **Vùng tập trung**, bật quyền **Usage access** và thông báo cho 
 Khi bắt đầu phiên, Focust dùng foreground service có thông báo thường trực để
 nhận biết ứng dụng thuộc nhóm Đỏ/Vàng và nhắc; dịch vụ tự dừng khi hết thời gian
 hoặc khi tạm dừng phiên. Tính năng chỉ nhắc, không chặn ứng dụng.
+
+Trong **Tài khoản → Thiết bị IoT**, Focust quét thiết bị đang cắm vào cổng sạc
+USB-C khi mở trang; trạng thái được cập nhật khi cắm/rút trong lúc trang đang
+mở. Cổng này cần hoạt động ở chế độ USB Host/OTG và dùng cáp có dây dữ liệu;
+cáp chỉ sạc sẽ không hiện thiết bị. Chức năng hiện nhận diện thiết bị, chưa
+đọc/điều khiển dữ liệu nếu chưa có thông tin giao thức.
 
 Plugin `InstalledAppsPlugin` dùng `PackageManager` để đọc các ứng dụng có
 launcher mà Android cho phép hiển thị. Cấu hình `<queries>` nằm trong

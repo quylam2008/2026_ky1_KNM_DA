@@ -1,6 +1,9 @@
 package vn.focust.app;
 
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.app.AppOpsManager;
@@ -9,6 +12,9 @@ import android.net.Uri;
 import android.os.Process;
 import android.provider.Settings;
 import android.os.Build;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -18,9 +24,41 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.util.List;
+import java.util.Map;
 
 @CapacitorPlugin(name = "InstalledApps")
 public class InstalledAppsPlugin extends Plugin {
+    private BroadcastReceiver usbReceiver;
+
+    @Override
+    public void load() {
+        super.load();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        usbReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                notifyListeners("usbDevicesChanged", createUsbDevicesResult());
+            }
+        };
+        ContextCompat.registerReceiver(
+            getContext(),
+            usbReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        );
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (usbReceiver != null) {
+            getContext().unregisterReceiver(usbReceiver);
+            usbReceiver = null;
+        }
+        super.handleOnDestroy();
+    }
+
     @PluginMethod
     public void getInstalledApps(PluginCall call) {
         PackageManager packageManager = getContext().getPackageManager();
@@ -51,6 +89,39 @@ public class InstalledAppsPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("apps", apps);
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getUsbDevices(PluginCall call) {
+        call.resolve(createUsbDevicesResult());
+    }
+
+    private JSObject createUsbDevicesResult() {
+        PackageManager packageManager = getContext().getPackageManager();
+        boolean usbHostSupported = packageManager.hasSystemFeature(PackageManager.FEATURE_USB_HOST);
+        UsbManager usbManager = (UsbManager) getContext().getSystemService(getContext().USB_SERVICE);
+        JSArray devices = new JSArray();
+
+        if (usbManager != null) {
+            for (Map.Entry<String, UsbDevice> entry : usbManager.getDeviceList().entrySet()) {
+                UsbDevice device = entry.getValue();
+                JSObject item = new JSObject();
+                item.put("deviceName", entry.getKey());
+                item.put("manufacturerName", safeUsbName(device.getManufacturerName()));
+                item.put("productName", safeUsbName(device.getProductName()));
+                item.put("vendorId", device.getVendorId());
+                item.put("productId", device.getProductId());
+                item.put("deviceClass", device.getDeviceClass());
+                item.put("interfaceCount", device.getInterfaceCount());
+                item.put("permissionGranted", usbManager.hasPermission(device));
+                devices.put(item);
+            }
+        }
+
+        JSObject result = new JSObject();
+        result.put("usbHostSupported", usbHostSupported);
+        result.put("devices", devices);
+        return result;
     }
 
     @PluginMethod
@@ -150,5 +221,9 @@ public class InstalledAppsPlugin extends Plugin {
         result.put("started", started);
         if (message != null) result.put("message", message);
         call.resolve(result);
+    }
+
+    private String safeUsbName(String name) {
+        return name == null ? "" : name;
     }
 }

@@ -17,6 +17,8 @@ import {
   openUsageAccessSettings,
   startFocusAppMonitoring,
   stopFocusAppMonitoring,
+  listenForUsbDeviceChanges,
+  scanUsbDevices,
 } from './installed-apps'
 import {
   createStudyTask,
@@ -39,18 +41,18 @@ import {
   updateGoalSettings,
   updateNotificationSettings,
   updateStudyTask,
-  updateDemoStats,
   type AppUserView,
   type AppNotificationView,
   type FocusAppView as FocusApp,
   type FocusProgressView,
-  type DemoStatsView,
+  type DemoAccountView,
   type GoalSettingsView,
   type NotificationSettingsView,
   type RankingView,
   type StudyTaskView as StudyTask,
   type WalletView,
 } from './supabase-api'
+import DemoAdminPanel from './DemoAdminPanel'
 
 type Page = 'home' | 'ranking' | 'garden' | 'shop' | 'account'
 type AuthPage = 'login' | 'signup' | 'forgot'
@@ -1611,12 +1613,14 @@ function Garden({
 
 function Shop({
   onVip,
+  isVip,
   wallet,
   onWalletChange,
   onNotify,
   onNotificationsChanged,
 }: {
   onVip: () => void
+  isVip: boolean
   wallet: WalletView
   onWalletChange: (wallet: WalletView) => void
   onNotify: (message: string) => void
@@ -1695,9 +1699,10 @@ function Shop({
               <h3 className="mt-2 font-serif text-2xl">Mở khóa khu rừng diệu kỳ</h3>
               <button
                 onClick={onVip}
+                disabled={isVip}
                 className="mt-4 rounded-xl bg-[#dbc274] px-4 py-2.5 text-[10px] font-bold text-[#173f31]"
               >
-                Khám phá gói VIP
+                {isVip ? 'VIP đã kích hoạt' : 'Khám phá gói VIP'}
               </button>
             </div>
             <div className="absolute -bottom-5 -right-1">
@@ -1714,12 +1719,12 @@ function Shop({
           {plantCatalog
             .filter((plant) => (tab === 'vip' ? plant.vip : !plant.vip))
             .map((plant) => {
-              const owned = wallet.ownedPlantIds.includes(plant.id)
+              const owned = wallet.ownedPlantIds.includes(plant.id) || (plant.vip && isVip)
               return (
               <article key={plant.id} className="rounded-[23px] border border-[#e4eae3] bg-white p-3">
                 <div className="relative grid h-28 place-items-center rounded-[17px] bg-[#f1f4ee]">
                   <Tree size={90} variant={plant.variant} />
-                  {plant.vip && (
+                  {plant.vip && !isVip && (
                     <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[#a3762e]">
                       <Icon name="lock" size={13} />
                     </span>
@@ -1728,11 +1733,13 @@ function Shop({
                 <h3 className="mt-3 text-sm font-bold text-[#214b39]">{plant.name}</h3>
                 <button
                   disabled={pendingId === plant.id || owned}
-                  onClick={() => (plant.vip ? onVip() : void buyPlant(plant.id))}
+                  onClick={() =>
+                    plant.vip ? (!isVip && onVip()) : void buyPlant(plant.id)
+                  }
                   className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl bg-[#eef3ed] py-2 text-[10px] font-bold text-[#37634d] disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {plant.vip ? (
-                    'Mở bằng VIP'
+                    isVip ? 'Đã mở khóa' : 'Mở bằng VIP'
                   ) : owned ? (
                     'Đã sở hữu'
                   ) : pendingId === plant.id ? (
@@ -1759,12 +1766,11 @@ function Account({
   user,
   wallet,
   goals,
-  focusProgress,
   demoMode,
   notificationSettings,
   onProfileUpdated,
   onGoalsUpdated,
-  onDemoStatsUpdated,
+  onDemoAccountUpdated,
   onNotificationSettingsUpdated,
 }: {
   onLogout: () => void
@@ -1772,15 +1778,13 @@ function Account({
   user: AppUserView
   wallet: WalletView
   goals: GoalSettingsView
-  focusProgress: FocusProgressView
   demoMode: boolean
   notificationSettings: NotificationSettingsView
   onProfileUpdated: (user: AppUserView) => void
   onGoalsUpdated: (goals: GoalSettingsView) => void
-  onDemoStatsUpdated: (data: {
-    profile: AppUserView
+  onDemoAccountUpdated: (data: {
+    account: DemoAccountView
     ranking: RankingView
-    focusProgress: FocusProgressView
   }) => void
   onNotificationSettingsUpdated: (settings: NotificationSettingsView) => void
 }) {
@@ -1797,12 +1801,11 @@ function Account({
         section={activeSection}
         user={user}
         goals={goals}
-        focusProgress={focusProgress}
         notificationSettings={notificationSettings}
         onBack={() => setActiveSection(null)}
         onProfileUpdated={onProfileUpdated}
         onGoalsUpdated={onGoalsUpdated}
-        onDemoStatsUpdated={onDemoStatsUpdated}
+        onDemoAccountUpdated={onDemoAccountUpdated}
         onNotificationSettingsUpdated={onNotificationSettingsUpdated}
       />
     )
@@ -1823,6 +1826,11 @@ function Account({
             <span className="mt-2 inline-block rounded-full bg-[#edf3e9] px-2 py-1 text-[9px] font-bold text-[#4e745f]">
               THÀNH VIÊN XANH
             </span>
+            {user.isVip && (
+              <span className="ml-2 mt-2 inline-block rounded-full bg-[#fff3ce] px-2 py-1 text-[9px] font-bold text-[#96712a]">
+                VIP
+              </span>
+            )}
           </div>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
@@ -1843,17 +1851,22 @@ function Account({
           </div>
         </div>
         <button
-          onClick={onVip}
-          className="relative mt-4 flex w-full items-center overflow-hidden rounded-[24px] bg-[#173f31] p-5 text-left text-white"
+          onClick={() => !user.isVip && onVip()}
+          disabled={user.isVip}
+          className="relative mt-4 flex w-full items-center overflow-hidden rounded-[24px] bg-[#173f31] p-5 text-left text-white disabled:cursor-default"
         >
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#d4b663] text-[#173f31]">
             <Icon name="shield" />
           </div>
           <div className="ml-3 flex-1">
-            <b className="font-serif text-lg">Nâng cấp Focust VIP</b>
-            <p className="text-[10px] text-white/55">Mở khóa cây hiếm và báo cáo sâu</p>
+            <b className="font-serif text-lg">
+              {user.isVip ? 'Focust VIP đã kích hoạt' : 'Nâng cấp Focust VIP'}
+            </b>
+            <p className="text-[10px] text-white/55">
+              {user.isVip ? 'Đã mở khóa các cây VIP' : 'Mở khóa cây hiếm và báo cáo sâu'}
+            </p>
           </div>
-          <Icon name="chevron" size={18} />
+          {!user.isVip && <Icon name="chevron" size={18} />}
         </button>
         <div className="mt-5 overflow-hidden rounded-[22px] border border-[#e5ebe4] bg-white">
           {[
@@ -1906,38 +1919,82 @@ function AccountDetail({
   section,
   user,
   goals,
-  focusProgress,
   notificationSettings,
   onBack,
   onProfileUpdated,
   onGoalsUpdated,
-  onDemoStatsUpdated,
+  onDemoAccountUpdated,
   onNotificationSettingsUpdated,
 }: {
   section: AccountSection
   user: AppUserView
   goals: GoalSettingsView
-  focusProgress: FocusProgressView
   notificationSettings: NotificationSettingsView
   onBack: () => void
   onProfileUpdated: (user: AppUserView) => void
   onGoalsUpdated: (goals: GoalSettingsView) => void
-  onDemoStatsUpdated: (data: {
-    profile: AppUserView
+  onDemoAccountUpdated: (data: {
+    account: DemoAccountView
     ranking: RankingView
-    focusProgress: FocusProgressView
   }) => void
   onNotificationSettingsUpdated: (settings: NotificationSettingsView) => void
 }) {
   const [name, setName] = useState(user.name)
   const [username, setUsername] = useState(user.username)
-  const [demoStreak, setDemoStreak] = useState(String(user.streak))
-  const [demoHistory, setDemoHistory] = useState(focusProgress.dailyHistory)
   const [dailyMinutes, setDailyMinutes] = useState(String(goals.dailyMinutes))
   const [monthlyHours, setMonthlyHours] = useState(String(goals.monthlyHours))
   const [settings, setSettings] = useState(notificationSettings)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const [usbScan, setUsbScan] =
+    useState<Awaited<ReturnType<typeof scanUsbDevices>> | null>(null)
+  const [usbScanning, setUsbScanning] = useState(false)
+  const [usbError, setUsbError] = useState('')
+  const refreshUsbDevices = useCallback(async () => {
+    setUsbScanning(true)
+    setUsbError('')
+    try {
+      setUsbScan(await scanUsbDevices())
+    } catch (scanError) {
+      setUsbError(scanError instanceof Error ? scanError.message : 'Chưa thể quét USB.')
+    } finally {
+      setUsbScanning(false)
+    }
+  }, [])
+  useEffect(() => {
+    if (section !== 'devices') return
+    let active = true
+    let removeListener: (() => void) | undefined
+    const initializeUsbScan = async () => {
+      try {
+        const listener = await listenForUsbDeviceChanges((result) => {
+          if (!active) return
+          setUsbScan({
+            ...result,
+            supported: result.usbHostSupported,
+            note: result.usbHostSupported
+              ? 'Thiết bị USB-C/OTG được cập nhật theo trạng thái cắm/rút.'
+              : 'Điện thoại này không hỗ trợ USB Host/OTG.',
+          })
+        })
+        if (!active) {
+          if (listener) void listener.remove()
+          return
+        }
+        if (listener) removeListener = () => void listener.remove()
+        await refreshUsbDevices()
+      } catch (scanError) {
+        if (active) {
+          setUsbError(scanError instanceof Error ? scanError.message : 'Chưa thể quét USB.')
+        }
+      }
+    }
+    void initializeUsbScan()
+    return () => {
+      active = false
+      removeListener?.()
+    }
+  }, [refreshUsbDevices, section])
   const title = {
     profile: 'Hồ sơ cá nhân',
     goals: 'Mục tiêu học tập',
@@ -1986,20 +2043,6 @@ function AccountDetail({
       onBack()
       return
     }
-    if (section === 'demo') {
-      const input: DemoStatsView = {
-        streak: Number(demoStreak),
-        dailyHistory: demoHistory,
-      }
-      const result = await updateDemoStats(input)
-      setPending(false)
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      onDemoStatsUpdated(result.data)
-      onBack()
-    }
   }
 
   return (
@@ -2014,18 +2057,78 @@ function AccountDetail({
           <Icon name="arrow" size={16} />
           Quay lại tài khoản
         </button>
-        {section === 'devices' ? (
+        {section === 'demo' ? (
+          <DemoAdminPanel onUpdated={onDemoAccountUpdated} />
+        ) : section === 'devices' ? (
           <div className="rounded-[24px] border border-[#e5ebe4] bg-white p-5">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#edf3e9] text-[#3d7055]">
               <Icon name="shield" size={22} />
             </div>
-            <h2 className="mt-4 font-serif text-lg font-semibold">Chưa kết nối thiết bị</h2>
+            <h2 className="mt-4 font-serif text-lg font-semibold">Quét thiết bị qua cổng sạc</h2>
             <p className="mt-2 text-sm leading-6 text-[#748279]">
-              Tích hợp thiết bị thật đang chờ thông tin hãng, model và giao thức kết nối (Wi-Fi,
-              Bluetooth/BLE hoặc MQTT). Khi có thông tin, có thể nối thiết bị tại đây.
+              Cắm thiết bị bằng cáp dữ liệu USB-C/OTG. Android sẽ tự quét thiết bị khi mở mục này;
+              bạn cũng có thể quét lại bên dưới.
             </p>
-            <p className="mt-4 rounded-xl bg-[#f2f5ef] p-3 text-xs leading-5 text-[#6d7f73]">
-              Việc quét ứng dụng trên điện thoại trong mục Home không phải chức năng kết nối IoT.
+            <button
+              type="button"
+              onClick={() => void refreshUsbDevices()}
+              disabled={usbScanning}
+              className="mt-4 h-11 w-full rounded-xl bg-[#174d38] text-sm font-bold text-white disabled:opacity-55"
+            >
+              {usbScanning ? 'Đang quét...' : 'Quét lại cổng USB'}
+            </button>
+            {usbError && (
+              <p role="alert" className="mt-3 rounded-xl bg-[#fff0ed] p-3 text-xs text-[#b3574a]">
+                {usbError}
+              </p>
+            )}
+            {usbScan && (
+              <>
+                <p className="mt-3 rounded-xl bg-[#f2f5ef] p-3 text-xs leading-5 text-[#6d7f73]">
+                  {usbScan.note}
+                </p>
+                {usbScan.supported && usbScan.devices.length === 0 && (
+                  <p className="mt-3 text-center text-xs text-[#839087]">
+                    Chưa phát hiện thiết bị USB nào.
+                  </p>
+                )}
+                {usbScan.devices.map((device) => (
+                  <div
+                    key={device.deviceName}
+                    className="mt-3 rounded-xl border border-[#e5ebe4] bg-[#fbfcfa] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <b className="block text-sm text-[#315140]">
+                        {device.productName || device.manufacturerName || 'Thiết bị'}
+                      </b>
+                      <span className="shrink-0 rounded-full bg-[#eaf2e8] px-2 py-1 text-[9px] font-bold text-[#3d7055]">
+                        Đang kết nối
+                      </span>
+                    </div>
+                    <span className="mt-1 block text-[10px] text-[#839087]">
+                      {device.productName
+                        ? `Model: ${device.productName} · `
+                        : 'Model không được thiết bị cung cấp · '}
+                      VID:PID {device.vendorId.toString(16).padStart(4, '0')}:
+                      {device.productId.toString(16).padStart(4, '0')}
+                      {' · '}
+                      {device.interfaceCount} giao diện
+                    </span>
+                    <span className="mt-1 block text-[10px] text-[#839087]">
+                      {device.permissionGranted
+                        ? 'Quyền truy cập USB đã được cấp.'
+                        : 'Chưa cấp quyền truy cập USB cho Focust.'}
+                    </span>
+                  </div>
+                ))}
+                <p className="mt-3 text-[10px] leading-5 text-[#839087]">
+                  Danh sách tự cập nhật khi cắm/rút trong lúc màn hình này mở. Tên model chỉ hiện
+                  khi thiết bị cung cấp qua USB; đọc/điều khiển cần biết giao thức thiết bị.
+                </p>
+              </>
+            )}
+            <p className="mt-3 text-[10px] leading-5 text-[#839087]">
+              Quét USB hiện chỉ hỗ trợ bản Android native; iPhone và trình duyệt chưa hỗ trợ.
             </p>
           </div>
         ) : (
@@ -2118,64 +2221,6 @@ function AccountDetail({
                   Đây là thông báo trong ứng dụng. Push khi ứng dụng đóng cần cấu hình FCM/APNs và
                   Web Push; Supabase hiện chỉ lưu dữ liệu.
                 </p>
-              </>
-            )}
-            {section === 'demo' && (
-              <>
-                <p className="rounded-xl bg-[#fff7e6] p-3 text-xs leading-5 text-[#8a6a2c]">
-                  Chỉnh dữ liệu mẫu cho tài khoản demo. Streak, tổng thời gian và biểu đồ 7 ngày
-                  sẽ được cập nhật đồng bộ.
-                </p>
-                <label className="block text-xs font-semibold text-[#557163]">
-                  Streak hiện tại (ngày)
-                  <input
-                    className="mt-2 h-12 w-full rounded-xl border border-[#dfe7df] px-3 text-sm text-[#173e2f] outline-none focus:border-[#4f8068] focus:ring-4 focus:ring-[#e5efe5]"
-                    type="number"
-                    min={0}
-                    max={36500}
-                    step={1}
-                    value={demoStreak}
-                    onChange={(event) => setDemoStreak(event.target.value)}
-                    required
-                  />
-                </label>
-                <fieldset className="space-y-3">
-                  <legend className="mb-2 text-xs font-semibold text-[#557163]">
-                    Thời gian tập trung từng ngày (phút)
-                  </legend>
-                  {demoHistory.map((entry, index) => (
-                    <label
-                      key={entry.date}
-                      className="flex items-center justify-between gap-3 text-xs font-medium text-[#557163]"
-                    >
-                      {new Intl.DateTimeFormat('vi-VN', {
-                        weekday: 'short',
-                        day: '2-digit',
-                        month: '2-digit',
-                        timeZone: 'Asia/Ho_Chi_Minh',
-                      }).format(new Date(`${entry.date}T12:00:00+07:00`))}
-                      <input
-                        className="h-10 w-24 rounded-xl border border-[#dfe7df] px-3 text-right text-sm text-[#173e2f] outline-none focus:border-[#4f8068] focus:ring-4 focus:ring-[#e5efe5]"
-                        type="number"
-                        min={0}
-                        max={1440}
-                        step={1}
-                        value={entry.minutes}
-                        onChange={(event) =>
-                          setDemoHistory((current) =>
-                            current.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? { ...item, minutes: Number(event.target.value) }
-                                : item,
-                            ),
-                          )
-                        }
-                        aria-label={`Số phút tập trung ngày ${entry.date}`}
-                        required
-                      />
-                    </label>
-                  ))}
-                </fieldset>
               </>
             )}
             {error && (
@@ -2555,6 +2600,18 @@ export default function FocustApp() {
     },
     [favoritePlantIds],
   )
+  const accessiblePlantIds = useMemo(
+    () =>
+      user?.isVip
+        ? [
+            ...new Set([
+              ...(wallet?.ownedPlantIds ?? []),
+              ...plantCatalog.filter((plant) => plant.vip).map((plant) => plant.id),
+            ]),
+          ]
+        : wallet?.ownedPlantIds ?? [],
+    [user?.isVip, wallet?.ownedPlantIds],
+  )
   const body = useMemo(
     () =>
       page === 'home' ? (
@@ -2564,7 +2621,7 @@ export default function FocustApp() {
           focusProgress={focusProgress}
           name={user?.name ?? ''}
           streak={user?.streak ?? 0}
-          ownedPlantIds={wallet?.ownedPlantIds ?? []}
+          ownedPlantIds={accessiblePlantIds}
           tasks={tasks}
           onAppChanged={(changed) =>
             setApps((current) => current.map((app) => (app.id === changed.id ? changed : app)))
@@ -2583,7 +2640,7 @@ export default function FocustApp() {
         <Ranking ranking={ranking} />
       ) : page === 'garden' ? (
         <Garden
-          ownedPlantIds={wallet?.ownedPlantIds ?? []}
+          ownedPlantIds={accessiblePlantIds}
           favoritePlantIds={favoritePlantIds}
           onToggleFavorite={toggleFavoritePlant}
         />
@@ -2591,6 +2648,7 @@ export default function FocustApp() {
         wallet ? (
           <Shop
             wallet={wallet}
+            isVip={user?.isVip === true}
             onWalletChange={setWallet}
             onNotify={setNotice}
             onNotificationsChanged={refreshNotifications}
@@ -2611,7 +2669,6 @@ export default function FocustApp() {
           user={user}
           wallet={wallet ?? { balance: 0, ownedPlantIds: [], dailyRewardClaimed: false }}
           goals={goals}
-          focusProgress={focusProgress}
           demoMode={demoMode}
           notificationSettings={notificationSettings}
           onProfileUpdated={(profile) => {
@@ -2622,10 +2679,19 @@ export default function FocustApp() {
             setGoals(nextGoals)
             setNotice('Mục tiêu học tập đã được cập nhật.')
           }}
-          onDemoStatsUpdated={(data) => {
-            setUser(data.profile)
+          onDemoAccountUpdated={(data) => {
             setRanking(data.ranking)
-            setFocusProgress(normalizeFocusProgress(data.focusProgress))
+            if (data.account.user.id === user.id) {
+              setUser({ ...data.account.user, email: user.email })
+              setWallet(data.account.wallet)
+              setTasks(data.account.tasks)
+              setApps(data.account.apps)
+              setGoals(data.account.goals)
+              setNotificationSettings(data.account.notificationSettings)
+              setNotifications(data.account.notifications)
+              setFocusProgress(normalizeFocusProgress(data.account.focusProgress))
+              setFavoritePlantIds(data.account.favoritePlantIds)
+            }
             setNotice('Dữ liệu demo đã được đồng bộ.')
           }}
           onNotificationSettingsUpdated={(settings) => {
@@ -2645,6 +2711,7 @@ export default function FocustApp() {
     [
       apps,
       completeSession,
+      accessiblePlantIds,
       demoMode,
       focusProgress,
       favoritePlantIds,
