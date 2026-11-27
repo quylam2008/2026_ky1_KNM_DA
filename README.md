@@ -48,6 +48,18 @@ Trước khi cập nhật Edge Function, chạy các migration trong
 cập nhật function `make-server-23149b0b` bằng hai tệp trong
 `supabase/functions/make-server-23149b0b/`.
 
+### Thay ảnh cây qua Supabase
+
+Chạy migration `20261127000200_focust_plant_images.sql` trong Supabase SQL
+Editor và deploy frontend phiên bản mới một lần để tạo bucket Storage công khai
+`focust-plant-images` và bật đồng bộ. Trong bucket, tạo/chọn folder theo ID cây
+rồi tải ảnh vào folder đó từ **Supabase Dashboard → Storage**. Ví dụ tải ảnh
+cây Mầm ban mai vào folder `morning_sprout`, Tùng xanh vào `green_pine`,
+Sakura đêm vào `night_sakura`. Có thể đặt tên ảnh tùy ý; app tự lấy ảnh mới
+nhất trong folder khi mở Cửa hàng/Khu vườn hoặc quay lại app. Không cần nhập URL,
+sửa bảng hay tải ảnh từ giao diện app. Hỗ trợ PNG/JPG/WebP; nếu folder chưa có
+ảnh, app dùng SVG cũ.
+
 Để bật công cụ quản lý nhiều tài khoản demo:
 
 1. Lấy User UID của các tài khoản demo tại **Authentication → Users**.

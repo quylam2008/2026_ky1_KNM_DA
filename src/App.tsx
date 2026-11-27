@@ -52,6 +52,7 @@ import {
   type StudyTaskView as StudyTask,
   type WalletView,
 } from './supabase-api'
+import { supabase } from './supabaseClient'
 import DemoAdminPanel from './DemoAdminPanel'
 
 type Page = 'home' | 'ranking' | 'garden' | 'shop' | 'account'
@@ -1507,13 +1508,51 @@ const plantCatalog = [
   { id: 'aurora_forest', name: 'Rừng cực quang', price: 0, variant: 2, vip: true, rare: true },
 ] as const
 
+function PlantArtwork({
+  plant,
+  imageUrl,
+  size,
+}: {
+  plant: (typeof plantCatalog)[number]
+  imageUrl?: string
+  size: number
+}) {
+  const [imageError, setImageError] = useState(false)
+
+  if (!imageUrl) return <Tree size={size} variant={plant.variant} />
+  if (imageError) {
+    return (
+      <div
+        role="img"
+        aria-label={`Không tải được ảnh ${plant.name}`}
+        className="grid place-items-center text-[10px] font-semibold text-[#b3574a]"
+        style={{ width: size, height: size }}
+      >
+        Lỗi ảnh
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={plant.name}
+      onError={() => setImageError(true)}
+      className="object-contain"
+      style={{ width: size, height: size }}
+    />
+  )
+}
+
 function Garden({
   ownedPlantIds,
   favoritePlantIds,
+  plantImages,
   onToggleFavorite,
 }: {
   ownedPlantIds: string[]
   favoritePlantIds: string[]
+  plantImages: Record<string, string>
   onToggleFavorite: (plantId: string) => Promise<void>
 }) {
   const [filter, setFilter] = useState('Tất cả')
@@ -1590,7 +1629,12 @@ function Garden({
                 </span>
               )}
               <div className="mx-auto grid h-28 place-items-center rounded-[18px] bg-[#f0f4ed]">
-                <Tree size={95} variant={plant.variant} />
+                <PlantArtwork
+                  key={`${plant.id}:${plantImages[plant.id] ?? ''}`}
+                  plant={plant}
+                  imageUrl={plantImages[plant.id]}
+                  size={95}
+                />
               </div>
               <h3 className="mt-3 text-sm font-bold text-[#214b39]">{plant.name}</h3>
               <p className="mt-1 text-[10px] text-[#8a968f]">Đã sở hữu</p>
@@ -1615,6 +1659,7 @@ function Shop({
   onVip,
   isVip,
   wallet,
+  plantImages,
   onWalletChange,
   onNotify,
   onNotificationsChanged,
@@ -1622,6 +1667,7 @@ function Shop({
   onVip: () => void
   isVip: boolean
   wallet: WalletView
+  plantImages: Record<string, string>
   onWalletChange: (wallet: WalletView) => void
   onNotify: (message: string) => void
   onNotificationsChanged: () => void
@@ -1723,7 +1769,12 @@ function Shop({
               return (
               <article key={plant.id} className="rounded-[23px] border border-[#e4eae3] bg-white p-3">
                 <div className="relative grid h-28 place-items-center rounded-[17px] bg-[#f1f4ee]">
-                  <Tree size={90} variant={plant.variant} />
+                  <PlantArtwork
+                    key={`${plant.id}:${plantImages[plant.id] ?? ''}`}
+                    plant={plant}
+                    imageUrl={plantImages[plant.id]}
+                    size={90}
+                  />
                   {plant.vip && !isVip && (
                     <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-[#a3762e]">
                       <Icon name="lock" size={13} />
@@ -2505,6 +2556,7 @@ export default function FocustApp() {
     shopUpdates: true,
   })
   const [notifications, setNotifications] = useState<AppNotificationView[]>([])
+  const [plantImages, setPlantImages] = useState<Record<string, string>>({})
   const [favoritePlantIds, setFavoritePlantIds] = useState<string[]>([])
   const [focusProgress, setFocusProgress] =
     useState<FocusProgressView>(normalizeFocusProgress())
@@ -2540,6 +2592,52 @@ export default function FocustApp() {
     if (hasSupabaseSession()) void loadData()
     else setLoading(false)
   }, [loadData])
+  useEffect(() => {
+    if (page !== 'garden' && page !== 'shop') return
+    let cancelled = false
+    const loadPlantImages = async () => {
+      try {
+        const entries = await Promise.all(
+          plantCatalog.map(async (plant) => {
+            const { data, error } = await supabase.storage
+              .from('focust-plant-images')
+              .list(plant.id, { limit: 100, sortBy: { column: 'updated_at', order: 'desc' } })
+            if (error) throw new Error(`Không thể tải ảnh cây ${plant.name}: ${error.message}`)
+            const file = (data ?? []).find((item) => /\.(png|jpe?g|webp)$/i.test(item.name))
+            if (!file) return null
+            const { data: publicUrl } = supabase.storage
+              .from('focust-plant-images')
+              .getPublicUrl(`${plant.id}/${file.name}`)
+            const version = file.updated_at ?? file.created_at
+            const imageUrl = version
+              ? `${publicUrl.publicUrl}?v=${encodeURIComponent(version)}`
+              : publicUrl.publicUrl
+            return [plant.id, imageUrl] as const
+          }),
+        )
+        if (cancelled) return
+        setPlantImages(Object.fromEntries(entries.filter((entry) => entry !== null)))
+      } catch (error) {
+        if (cancelled) return
+        setNotice(
+          `Không thể tải ảnh cây từ Supabase: ${
+            error instanceof Error ? error.message : 'Lỗi kết nối không xác định.'
+          }`,
+        )
+      }
+    }
+    const refreshWhenActive = () => {
+      if (document.visibilityState === 'visible') void loadPlantImages()
+    }
+    void loadPlantImages()
+    window.addEventListener('focus', refreshWhenActive)
+    document.addEventListener('visibilitychange', refreshWhenActive)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', refreshWhenActive)
+      document.removeEventListener('visibilitychange', refreshWhenActive)
+    }
+  }, [page])
   const refreshNotifications = useCallback(async () => {
     try {
       setNotifications(await getNotifications())
@@ -2642,6 +2740,7 @@ export default function FocustApp() {
         <Garden
           ownedPlantIds={accessiblePlantIds}
           favoritePlantIds={favoritePlantIds}
+          plantImages={plantImages}
           onToggleFavorite={toggleFavoritePlant}
         />
       ) : page === 'shop' ? (
@@ -2649,6 +2748,7 @@ export default function FocustApp() {
           <Shop
             wallet={wallet}
             isVip={user?.isVip === true}
+            plantImages={plantImages}
             onWalletChange={setWallet}
             onNotify={setNotice}
             onNotificationsChanged={refreshNotifications}
@@ -2718,6 +2818,7 @@ export default function FocustApp() {
       goals,
       notificationSettings,
       page,
+      plantImages,
       ranking,
       refreshNotifications,
       tasks,
