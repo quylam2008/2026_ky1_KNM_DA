@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2320" viewBox="0 0 1600 2320" role="img" aria-labelledby="title description">
+  <title id="title">User flow — Focust</title>
+  <desc id="description">Sơ đồ hành trình người dùng từ đăng nhập, tập trung học, nhận thưởng đến các mục điều hướng của Focust.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6c8275"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#173e2f" flood-opacity=".08"/>
+    </filter>
+    <style>
+      text { font-family: Inter, "Segoe UI", Arial, sans-serif; fill: #173e2f; }
+      .title { font-size: 46px; font-weight: 750; letter-spacing: -1.5px; }
+      .subtitle { font-size: 18px; fill: #718078; }
+      .section { font-size: 16px; font-weight: 750; letter-spacing: 2px; fill: #779080; }
+      .node { fill: #ffffff; stroke: #dce7dc; stroke-width: 2; }
+      .main { fill: #174d38; stroke: #174d38; }
+      .mainText { fill: #ffffff; }
+      .gold { fill: #fff7e6; stroke: #e8cf91; }
+      .muted { fill: #f3f7f2; stroke: #dce7dc; }
+      .nodeTitle { font-size: 19px; font-weight: 700; }
+      .body { font-size: 15px; fill: #65756b; }
+      .small { font-size: 13px; fill: #718078; }
+      .tag { font-size: 13px; font-weight: 700; fill: #4d765f; }
+      .line { fill: none; stroke: #809587; stroke-width: 3; marker-end: url(#arrow); }
+      .linePlain { fill: none; stroke: #c4d2c7; stroke-width: 2.5; }
+      .divider { stroke: #e7eee7; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="2320" fill="#f5f8f4"/>
+  <circle cx="1450" cy="90" r="180" fill="#e8f0e6"/>
+  <circle cx="75" cy="2010" r="150" fill="#edf3ea"/>
+
+  <text x="100" y="92" class="section">FOCUST · HÀNH TRÌNH NGƯỜI DÙNG</text>
+  <text x="100" y="151" class="title">User flow</text>
+  <text x="100" y="187" class="subtitle">Từ tạo tài khoản đến tập trung, nhận thưởng và phát triển khu vườn.</text>
+  <rect x="1310" y="112" width="190" height="42" rx="21" fill="#e5efe4"/>
+  <text x="1405" y="139" text-anchor="middle" class="tag">SƠ ĐỒ TỔNG QUAN</text>
+
+  <text x="100" y="255" class="section">01 · VÀO ỨNG DỤNG</text>
+  <rect x="650" y="220" width="300" height="70" rx="35" class="main" filter="url(#shadow)"/>
+  <text x="800" y="263" text-anchor="middle" class="nodeTitle mainText">Mở Focust</text>
+
+  <path d="M800 290 V325" class="line"/>
+  <polygon points="800,330 930,390 800,450 670,390" fill="#fff7e6" stroke="#e8cf91" stroke-width="2"/>
+  <text x="800" y="384" text-anchor="middle" class="nodeTitle">Đã có phiên</text>
+  <text x="800" y="407" text-anchor="middle" class="nodeTitle">đăng nhập?</text>
+
+  <path d="M670 390 H460 V470" class="line"/>
+  <text x="535" y="378" class="tag">Chưa</text>
+  <path d="M930 390 H1140 V470" class="line"/>
+  <text x="1015" y="378" class="tag">Rồi</text>
+
+  <rect x="100" y="470" width="720" height="225" rx="26" class="node" filter="url(#shadow)"/>
+  <text x="135" y="515" class="nodeTitle">Đăng nhập / đăng ký</text>
+  <text x="135" y="545" class="body">Đăng nhập bằng username và mật khẩu</text>
+  <line x1="135" y1="565" x2="785" y2="565" class="divider"/>
+  <rect x="135" y="585" width="280" height="78" rx="16" class="muted"/>
+  <text x="160" y="616" class="tag">TẠO TÀI KHOẢN</text>
+  <text x="160" y="642" class="small">Tên · username · email · mật khẩu</text>
+  <rect x="435" y="585" width="350" height="78" rx="16" class="muted"/>
+  <text x="460" y="616" class="tag">QUÊN MẬT KHẨU?</text>
+  <text x="460" y="642" class="small">Nhập email để nhận hướng dẫn đặt lại</text>
+  <path d="M820 595 H870 V535 H990" class="line"/>
+  <text x="880" y="520" class="small">Thành công</text>
+
+  <rect x="990" y="470" width="510" height="135" rx="26" class="node" filter="url(#shadow)"/>
+  <text x="1030" y="520" class="nodeTitle">Đồng bộ dữ liệu</text>
+  <text x="1030" y="551" class="body">Tải hồ sơ, ví, task, tiến độ và thông báo</text>
+  <path d="M1245 605 V735 H800" class="linePlain"/>
+  <path d="M800 735 V765" class="line"/>
+  <rect x="650" y="770" width="300" height="72" rx="24" class="main" filter="url(#shadow)"/>
+  <text x="800" y="815" text-anchor="middle" class="nodeTitle mainText">Home</text>
+
+  <text x="100" y="915" class="section">02 · PHIÊN TẬP TRUNG</text>
+  <path d="M800 842 V875" class="line"/>
+  <rect x="570" y="880" width="460" height="76" rx="20" class="node" filter="url(#shadow)"/>
+  <text x="800" y="912" text-anchor="middle" class="nodeTitle">Chọn hoặc tạo task học tập</text>
+  <text x="800" y="938" text-anchor="middle" class="body">Ví dụ: môn học · bài tập · dự án</text>
+
+  <path d="M800 956 V985" class="line"/>
+  <rect x="570" y="990" width="460" height="76" rx="20" class="node" filter="url(#shadow)"/>
+  <text x="800" y="1022" text-anchor="middle" class="nodeTitle">Chọn thời lượng và cây</text>
+  <text x="800" y="1048" text-anchor="middle" class="body">25 / 45 / 60 phút hoặc tùy chỉnh · cây sở hữu</text>
+
+  <path d="M800 1066 V1095" class="line"/>
+  <rect x="650" y="1100" width="300" height="72" rx="24" class="main" filter="url(#shadow)"/>
+  <text x="800" y="1145" text-anchor="middle" class="nodeTitle mainText">Bắt đầu phiên</text>
+  <path d="M800 1172 V1200" class="line"/>
+  <polygon points="800,1205 930,1260 800,1315 670,1260" fill="#fff7e6" stroke="#e8cf91" stroke-width="2"/>
+  <text x="800" y="1255" text-anchor="middle" class="nodeTitle">Hoàn thành</text>
+  <text x="800" y="1278" text-anchor="middle" class="nodeTitle">phiên?</text>
+  <path d="M930 1260 H1080 V1165 H970" class="line"/>
+  <text x="1100" y="1210" class="tag">Chưa · tạm dừng</text>
+  <text x="1100" y="1232" class="small">hoặc tiếp tục phiên</text>
+  <path d="M800 1315 V1350" class="line"/>
+  <text x="820" y="1340" class="tag">Hoàn thành</text>
+
+  <rect x="570" y="1355" width="460" height="78" rx="20" class="node" filter="url(#shadow)"/>
+  <text x="800" y="1388" text-anchor="middle" class="nodeTitle">Lưu phiên và cập nhật tiến độ</text>
+  <text x="800" y="1415" text-anchor="middle" class="body">Cập nhật phút tập trung và streak</text>
+  <path d="M800 1433 V1460" class="line"/>
+  <polygon points="800,1465 930,1520 800,1575 670,1520" fill="#fff7e6" stroke="#e8cf91" stroke-width="2"/>
+  <text x="800" y="1515" text-anchor="middle" class="nodeTitle">Đủ điều kiện</text>
+  <text x="800" y="1538" text-anchor="middle" class="nodeTitle">nhận Xu?</text>
+  <path d="M670 1520 H470 V1590" class="line"/>
+  <text x="540" y="1508" class="tag">Có</text>
+  <path d="M930 1520 H1130 V1590" class="line"/>
+  <text x="1010" y="1508" class="tag">Chưa</text>
+
+  <rect x="250" y="1595" width="440" height="76" rx="20" class="gold" filter="url(#shadow)"/>
+  <text x="470" y="1628" text-anchor="middle" class="nodeTitle">Cộng Xu vào ví</text>
+  <text x="470" y="1654" text-anchor="middle" class="body">Đủ tối thiểu 25 phút tập trung</text>
+  <rect x="910" y="1595" width="440" height="76" rx="20" class="muted" filter="url(#shadow)"/>
+  <text x="1130" y="1628" text-anchor="middle" class="nodeTitle">Lưu phiên</text>
+  <text x="1130" y="1654" text-anchor="middle" class="body">Không cộng Xu nếu chưa đủ điều kiện</text>
+
+  <path d="M470 1671 V1700 H800" class="linePlain"/>
+  <path d="M1130 1671 V1700 H800" class="linePlain"/>
+  <path d="M800 1700 V1720" class="line"/>
+  <rect x="650" y="1720" width="300" height="64" rx="22" fill="#e5efe4" stroke="#ccddce" stroke-width="2"/>
+  <text x="800" y="1760" text-anchor="middle" class="nodeTitle">Quay lại Home</text>
+
+  <text x="100" y="1845" class="section">03 · ĐIỀU HƯỚNG CHÍNH</text>
+  <text x="1500" y="1845" text-anchor="end" class="small">Thanh điều hướng luôn sẵn sàng trong app</text>
+
+  <rect x="80" y="1880" width="450" height="170" rx="24" class="node" filter="url(#shadow)"/>
+  <rect x="80" y="1880" width="450" height="48" rx="24" fill="#e5efe4"/>
+  <text x="110" y="1912" class="nodeTitle">Home</text>
+  <text x="110" y="1960" class="body">• Phiên tập trung và task học tập</text>
+  <text x="110" y="1988" class="body">• Vùng tập trung: quét máy, nhóm app</text>
+  <text x="110" y="2016" class="body">• Mục tiêu, tiến độ và thông báo</text>
+
+  <rect x="575" y="1880" width="450" height="170" rx="24" class="node" filter="url(#shadow)"/>
+  <rect x="575" y="1880" width="450" height="48" rx="24" fill="#e5efe4"/>
+  <text x="605" y="1912" class="nodeTitle">Xếp hạng</text>
+  <text x="605" y="1960" class="body">• Theo dõi bảng xếp hạng Top 100</text>
+  <text x="605" y="1988" class="body">• Xem cấp bậc và thành tích tập trung</text>
+
+  <rect x="1070" y="1880" width="450" height="170" rx="24" class="node" filter="url(#shadow)"/>
+  <rect x="1070" y="1880" width="450" height="48" rx="24" fill="#e5efe4"/>
+  <text x="1100" y="1912" class="nodeTitle">Khu vườn · Cửa hàng</text>
+  <text x="1100" y="1960" class="body">• Xem, lọc và yêu thích cây đã sở hữu</text>
+  <text x="1100" y="1988" class="body">• Dùng Xu mua cây; VIP mở cây đặc biệt</text>
+  <text x="1100" y="2016" class="body">• Chọn cây trong vườn cho phiên học</text>
+
+  <rect x="80" y="2070" width="1440" height="170" rx="24" class="node" filter="url(#shadow)"/>
+  <rect x="80" y="2070" width="1440" height="48" rx="24" fill="#e5efe4"/>
+  <text x="110" y="2102" class="nodeTitle">Tài khoản</text>
+  <text x="110" y="2150" class="body">• Cập nhật hồ sơ và mục tiêu học tập · quản lý cài đặt thông báo</text>
+  <text x="110" y="2178" class="body">• Thiết bị IoT: quét USB/OTG trên Android · dữ liệu demo dành cho quản trị viên</text>
+  <text x="110" y="2206" class="body">• Đăng xuất để quay lại màn hình đăng nhập</text>
+  <text x="100" y="2285" class="small">Focust · User flow tổng quan</text>
+  <text x="1500" y="2285" text-anchor="end" class="small">SVG · Phóng to không vỡ nét</text>
+</svg>
